@@ -1,0 +1,11 @@
+{
+  "name": "sat-skills",
+  "version": "0.1.0",
+  "description": "Sat's collection of Claude Code skills",
+  "author": {
+    "name": "Sat",
+    "url": "https://saouri.ink"
+  },
+  "homepage": "https://github.com/<your-github-username>/skillz",
+  "license": "MIT"
+}
