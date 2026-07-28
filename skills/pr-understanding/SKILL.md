@@ -1,30 +1,236 @@
 ---
 name: pr-understanding
-description: >-
-  Use when reviewing or understanding a pull request. Maps callers, tests, and
-  blast radius (in parallel where possible), runs repo-aware standing checks
-  (e.g. Supabase RPC row-level security, currency-unit consistency), and flags
-  behavior-changing one-character edits. Handles visual-change, simple, and
-  migration PRs.
-license: MIT
+description: >
+  Understand a pull request or diff by building a falsifiable MAP instead of a
+  prose summary. Use when the user says "understand PR #123", "explain this PR",
+  "review this diff", "what does this change do", "help me understand this
+  branch/change", or wants to grasp AI-generated code before merging. TRIAGES the
+  PR first (size lane x scope lens) so a one-line fix, a UI tweak, a DB migration,
+  and a 40-file feature each get the RIGHT depth and the RIGHT questions — not one
+  generic treatment. Produces reading order, a Mermaid diagram of the changed
+  flow, a "verify these" checklist, and lens-specific sections (visual preview,
+  migration safety, dependency changelog...), rendered to an ephemeral HTML page
+  that opens in the browser. Fans out parallel subagents to map blast radius when
+  the lane warrants it.
 ---
 
 # PR Understanding
 
-> ⚠️ STUB — paste your real skill body below and delete this note.
-> Reminder from your design notes: output an EPHEMERAL HTML page (don't commit
-> an artifact), and use PARALLEL agents for gathering callers / tests /
-> blast-radius.
+**Premise.** With AI writing the code, the diff is cheap and *understanding* it is
+the expensive part. A prose summary that is 90% right is more dangerous than a diff
+you struggled through — the wrong 10% is invisible. Your job is NOT to summarize.
+Your job is to produce a **map the user can falsify at a glance**: a wrong arrow in
+a diagram jumps out in a way a wrong sentence never does.
 
-## When to use
-- Understanding an unfamiliar PR before review.
-- Assessing blast radius / risk of a change.
+**Altitude — lead with the shape, land on the load-bearing detail.** Work
+*architecture-first*: what moved, which boundaries it crosses (client↔edge↔DB↔
+storage, module↔module, screen↔navigator), what the new control/data flow is, and
+where the risk concentrates. Drill into a specific `file:line` **only when it
+carries weight** — a security re-check, an invariant, a behavioral edge, a
+one-character change that flips behavior. A citation is the *evidence* for a
+load-bearing claim, not a line-by-line tour. Every bullet either establishes the
+*shape* or flags something the reader must *verify* — if a detail changes neither,
+cut it or fold it into a collapsed `<details>` block.
 
-## Procedure
-1. TODO: paste your existing procedure here.
+## Hard rules
 
-## Standing checks (highest-leverage part)
-- Supabase RPC row-level security.
-- Currency-unit consistency.
-- Behavior-changing one-character edits (Step 6 flag).
-- TODO: extend for visual-change PRs, simple PRs, migration PRs.
+1. **Never emit a prose summary of what the PR does.** No "This PR refactors…"
+   paragraph anywhere in the output. The output is the sections below and nothing
+   else.
+2. **Every claim is falsifiable and located.** Cite `file:line`. If you cannot
+   point to it, do not assert it.
+3. **Triage before you dig (Step 2). Match effort to the PR.** A 5-line `??` fix
+   and a 40-file feature must NOT get identical treatment. The triage sets a **lane**
+   (how much machinery) and one or more **lenses** (which questions, diagram, checks,
+   special sections). Skipping triage is how this skill goes generic.
+4. **Always (re)render the HTML artifact when done.** Assemble the report as markdown
+   and pipe it through `render.py` as the final step of *every* run. It writes to a
+   **stable path** derived from the title, so re-running on the same PR **updates the
+   same artifact in place** — same URL, just refresh the tab. Commit nothing.
+5. **Read the whole repo for context, not just the diff.** Blast radius lives
+   outside the changed lines.
+
+## Step 1 — Acquire the change (net diff + a tree to read)
+
+You always need **two** things: the *net* diff, and a checked-out tree at the right
+commit (later subagents grep the repo, not just the patch).
+
+**Open PR, by number:**
+- Net diff: `gh pr diff <n>`. **Do NOT add `--patch`** — that returns the per-commit
+  mbox *series*, so a file touched by two commits appears twice and a rename shows as
+  add-then-rename. Pure noise.
+- Metadata: `gh pr view <n> --json title,body,files,state,mergedAt,headRefName,mergeCommit,additions,deletions`.
+- Tree: `gh pr checkout <n>` (uses the gh token; a plain `git fetch https://…` can fail
+  when the remote is SSH-only).
+
+**Merged / closed PR** — the head branch is usually **deleted**, so
+`git fetch origin <head>` fails. Use the merge commit instead:
+- `SHA=$(gh pr view <n> --json mergeCommit -q .mergeCommit.oid)`
+- Net diff of just this PR: `git diff "$SHA^" "$SHA"`.
+- The post-merge tree already lives at `$SHA` in `main` history — blast-radius subagents
+  read it directly, no branch to restore.
+
+**Branch / ref range:** `git diff <base>...<head>`. **Working tree:** `git diff`.
+
+**No local clone?** `gh repo clone <owner>/<repo> /tmp/<repo> -- --depth 50` (token auth).
+
+Capture the net patch, the changed-file list with +/- counts, and the title/description if
+one exists. You will **fact-check the description against the code** — never trust it.
+
+## Step 2 — Triage: fingerprint → route (lane × lens)
+
+This is the step that stops the skill from being generic. Fingerprint the PR from the
+`--stat`, the file paths, and content signals, then set two independent dials.
+
+### First, compute MEANINGFUL churn
+
+Size is measured on **meaningful** churn, not raw `+/-`. **Exclude** from the count:
+lockfiles (`*.lock`, `package-lock.json`, `Podfile.lock`, `yarn.lock`, `Cargo.lock`,
+`Package.resolved`), snapshots (`__snapshots__`, `*.snap`), generated code (`*.g.dart`,
+`*.pb.go`, `openapi`/`graphql` codegen, `dist/`, `build/`), vendored deps, and pure
+moves/renames. A `pod install` lockfile bump must not fake "large". Note the excluded
+files — the *Reading order* section will list them under "Ignore".
+
+### Axis 1 — SIZE → lane (how much machinery)
+
+| Lane | Trigger (on meaningful churn) | What changes vs Standard |
+|---|---|---|
+| **Fast** | ≤~3 meaningful files, single concern, low blast radius (no exported-signature / schema / auth / money change) | **Skip the parallel fan-out** (do a quick inline caller/test check instead). ≤1 diagram (skip if the flow is unchanged). 2–3 verify items. Still renders. |
+| **Standard** | a normal PR | The full Steps 3–7 below, inline (fan out only if blast radius looks non-trivial). |
+| **Deep** | ≥~10 meaningful files, OR crosses a boundary (client↔edge↔DB, new native module), OR high blast radius, OR touches migrations / auth / money | **Full parallel fan-out** (Step 3), old-vs-new diagrams, extra scrutiny, more verify items. |
+
+When unsure between two lanes, pick the **larger** — under-reading a big PR is the
+expensive mistake.
+
+### Axis 2 — SCOPE → lens (which questions, diagram, checks, sections)
+
+Match the PR against the lenses below. **A PR may get one primary lens + secondary
+lenses** (a feature that adds a migration is Feature × Migration). For each matched
+lens, **read its file** and fold its guidance into the relevant steps:
+
+| Lens | Fires when… | Lens file |
+|---|---|---|
+| **Visual / UI** *(previewable)* | changes touch view files (`*.tsx/jsx`, SwiftUI/`*.swift` views, `*.vue`), StyleSheet/CSS, color/spacing/font/layout props; or the PR body has screenshots | `lenses/visual.md` |
+| **Migration / schema** | `*.sql`, `**/migrations/**`, `supabase/migrations`, Prisma/Drizzle schema, any DB DDL | `lenses/migration.md` |
+| **Dependency bump** | only manifests + lockfiles change (`package.json`, `Podfile`, `go.mod`, `Cargo.toml`, `*.gradle`) — version numbers, no app logic | `lenses/dependency.md` |
+| **Refactor / no-behavior-change** | renames, moves, de-exports, extractions, type-only edits; author *claims* no behavior change | `lenses/refactor.md` |
+| **Feature / new flow** | new screens/routes/endpoints/files introducing behavior | `lenses/feature.md` |
+| **Bugfix** | title/body says fix; small targeted change to existing logic | `lenses/bugfix.md` |
+| **Config / CI / infra** | `.github/`, CI yaml, Dockerfiles, env/secrets, build config | `lenses/config.md` |
+
+If **nothing** matches cleanly, treat it as **Feature/Standard** and note the
+ambiguity as the first *verify* item.
+
+**State the routing decision at the top of the report**, one line, so the user can
+falsify the triage itself:
+> **Triage:** Deep lane · Feature × Migration lens · 14 meaningful files (3 lockfile/snapshot files ignored).
+
+## Step 3 — Blast radius (lane-gated)
+
+**Deep lane → fan out PARALLEL subagents.** One `Task` each, dispatched together in a
+single message so they run concurrently. Each returns a compact `file:line` bullet
+list, no prose:
+
+- **Callers** — for every exported/changed function, symbol, endpoint or RPC, who
+  calls it, and are the call sites compatible with the new signature/behavior?
+- **Tests** — which existing tests exercise the changed paths; are any now stale,
+  missing, or newly required?
+- **Type & schema usage** — every use site of changed types/interfaces/DB
+  columns/API shapes; flag any the diff did NOT update.
+- **Config / env / migration touch points** — new env vars, flags, migrations, or
+  generated code this change implies.
+
+**Standard lane →** fan out only if blast radius looks non-trivial; otherwise a quick
+inline grep for callers + tests of the changed symbols is enough.
+
+**Fast lane →** skip the fan-out; one inline check that the changed symbol's callers
+and tests are compatible.
+
+Merge into one **Blast Radius** section. Anything found that the diff did NOT touch is a
+candidate risk — highlight it. (Lenses add their own blast-radius targets, e.g. the
+Dependency lens greps the changelog for breaking changes, not the repo.)
+
+## Step 4 — Reading order
+
+Where to start, what to ignore:
+- **Load-bearing** — the 1–3 files where the actual behavior change lives. Start here.
+- **Supporting** — files that follow from the load-bearing change.
+- **Ignore** — generated, moved, renamed, or pure-format churn (the excluded set from
+  Step 2's meaningful-churn count). Say *why* it is safe to skip.
+
+## Step 5 — Diagram the CHANGED flow (Mermaid)
+
+**Lead with architecture.** The first diagram shows the change at the level of
+*components and boundaries* — the modules/services/layers touched and how data crosses
+between them. Only THEN, if a specific mechanism carries the risk, add a second, tighter
+diagram. **The matched lens picks the diagram type** (e.g. Migration → `erDiagram`
+before/after; Visual → a component/layout tree or style-delta, often no sequence
+diagram; Dependency → often no diagram at all). Skip the diagram entirely on the Fast
+lane when the flow is unchanged.
+
+Pick the detail type from the change shape:
+- Request / RPC / API / event path → **sequenceDiagram**.
+- Branching logic, lifecycle, status machine → **flowchart** / **stateDiagram-v2**.
+- Data-model / relationship change → **erDiagram** or a small **classDiagram**.
+
+When behavior changes, show **old path vs new path**. Depict *this change*, not the
+whole system.
+
+**Mermaid hygiene — a diagram that fails to parse is worse than no diagram.** The
+renderer degrades a broken diagram to a source block, but a rendered diagram is the
+point — keep the source parseable:
+- **flowchart / stateDiagram / class / ER — quote every node and edge label:**
+  `A["text"]`, `D{"choice?"}`, `X -->|"label"| Y`. Quoting neutralizes `(){}[]`, `:`,
+  `<`/`>`, `#`, `"`, and a leading `-`. When in doubt, quote.
+- **sequenceDiagram messages — do NOT quote** (quotes render literally). The one real
+  hazard is **`;`** — it silently truncates the message. Use a **comma** instead.
+- Keep `file:line` citations OUT of diagram labels. Cite in surrounding prose.
+
+## Step 6 — Standing checks (repo-aware invariants)
+
+Run the invariants that always matter in THIS repo. **This is the highest-leverage
+part of the skill.** Answer each yes/no/N-A with a `file:line`. **The matched lens
+contributes its own checks** (Migration → RLS preserved? reversible? backfill locks?;
+Visual → dark-mode + a11y contrast?; Config → secret newly logged?).
+
+<!-- TUNE: replace with the invariants that matter in your repo. Examples:
+- Does every changed Supabase RPC preserve row-level security / auth checks?
+- Are all monetary amounts still in minor units (no float, no major-unit leak)?
+- Do new DB reads/writes respect tenant/user scoping?
+- Are timestamps stored UTC and only formatted to local at the edge?
+- Any new external call without a timeout / error path?
+- Any secret, token, or PII newly logged?
+- (React/RN) Any hook called conditionally or inside a loop / `.map()`? Does the hook
+  COUNT stay stable across renders?
+-->
+- (add your repo's invariants here)
+
+## Step 7 — "Verify these"
+
+Restate the PR's implicit claims as **falsifiable questions the user checks against
+the code** — count scales with the lane (Fast 2–3, Deep 5–7+), and **the lens supplies
+its own** (Migration → "does the down-migration actually reverse the up?"; Dependency →
+"does any breaking change in the changelog hit our call sites?"). Shape:
+> "Claims the retry only fires on 5xx — verify at `api/client.ts:88` that a 4xx
+> falls through without retrying."
+
+Do not skip **trivial-looking edits that change behavior**: `||`→`??`, `===`→`==`, an
+added `await`, a flipped default, a removed `!`. A one-character diff can be the whole PR.
+
+## Step 8 — Render (and re-render on every revision)
+
+Assemble Steps 2–7 as one markdown document — **open with the Triage line**, then H2 per
+section, fenced ```mermaid for diagrams, deep-but-skippable content in
+`<details><summary>…</summary>`. Then render and open it:
+
+```bash
+printf '%s' "$REPORT" | python3 "<this-skill-dir>/render.py" --title "PR #<n>"
+# or: python3 "<this-skill-dir>/render.py" --title "PR #<n>" report.md
+```
+
+The title determines a **stable output path**, so **re-running updates the same artifact
+in place**. Keep the title identical across re-renders of the same PR.
+
+**Rendering is the last action of every run.** If you change anything after the first
+render, regenerate so the page is never stale, then report the path and **stop** — the
+page is the deliverable, not a chat recap.
