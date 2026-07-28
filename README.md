@@ -16,7 +16,7 @@ Both point at the *same* `skills/` directory, so there's nothing to keep in sync
 
 ### Route A — skills.sh (no marketplace needed)
 ```bash
-npx skills add <your-github-username>/skillz
+npx skills add akramsaouri/skillz
 ```
 Installs every skill under `skills/`. Works the moment the repo is public.
 (To show up in `npx skills find`, submit the repo once at skills.sh — until then
@@ -24,7 +24,7 @@ it's install-by-URL only.)
 
 ### Route B — Claude Code native plugin
 ```
-/plugin marketplace add <your-github-username>/skillz
+/plugin marketplace add akramsaouri/skillz
 /plugin install sat-skills@skillz
 ```
 Native to Claude Code — gives versioning and `/plugin update`.
