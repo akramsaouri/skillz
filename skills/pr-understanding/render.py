@@ -3,8 +3,17 @@
 HTML page and open it in the browser. Zero dependencies (Python stdlib only).
 
 Usage:
-    python3 render.py [--title TITLE] [--out PATH] [--no-open] [INPUT.md]
+    python3 render.py [--title TITLE] [--meta JSON|PATH] [--triage STR] [--out PATH]
+                      [--no-open] [INPUT.md]
     cat report.md | python3 render.py --title "PR #123"
+
+--meta takes `gh pr view --json …` output verbatim (as a string or a file path) and
+renders an identity bar under the title: author + avatar, state, link, dates, churn,
+branches. Unknown keys are ignored and missing ones are simply not shown.
+
+--triage takes the skill's routing line ("Deep lane · Feature lens · 14 meaningful
+files") and renders each `·`-separated part as a chip in the same header. It belongs
+in the chrome, not the body: it describes how the report was produced, not the PR.
 
 By default the page is written to a STABLE path derived from the title
 (<tmpdir>/pr-understanding-<slug>.html), so re-running the skill on the same PR
@@ -21,6 +30,7 @@ fails to parse degrades to a small labelled source block — never Mermaid's
 """
 import argparse
 import datetime
+import html
 import tempfile
 import json
 import os
@@ -53,6 +63,9 @@ TEMPLATE = r"""<!doctype html>
     --warn-border: #d4a72c;
     --warn-bg: #fff8e6;
     --figure-bg: #f8fafc;
+    --ok: #1a7f37;
+    --danger: #cf222e;
+    --merge: #8250df;
     --shadow: 0 1px 2px rgba(27,31,36,.06), 0 8px 24px rgba(27,31,36,.05);
     --radius: 12px;
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
@@ -73,6 +86,9 @@ TEMPLATE = r"""<!doctype html>
       --warn-border: #bb9020;
       --warn-bg: #1c1a10;
       --figure-bg: #11161d;
+      --ok: #3fb950;
+      --danger: #f85149;
+      --merge: #a371f7;
       --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 28px rgba(0,0,0,.35);
     }
   }
@@ -104,32 +120,84 @@ TEMPLATE = r"""<!doctype html>
   }
   .meta { color: var(--muted); font-size: .85rem; margin: 0; }
 
+  /* ---- PR identity bar ---- */
+  .prmeta {
+    display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .6rem;
+    margin: .7rem 0 .65rem; font-size: .87rem; color: var(--muted);
+  }
+  .prmeta .sep { color: var(--border); }
+  .prmeta .who {
+    display: inline-flex; align-items: center; gap: .45rem;
+    text-decoration: none; color: var(--text); font-weight: 620;
+  }
+  .prmeta .who:hover { color: var(--accent); }
+  .avatar {
+    position: relative; width: 22px; height: 22px; border-radius: 50%;
+    overflow: hidden; flex: none; background: var(--accent-weak);
+    border: 1px solid var(--border-soft);
+  }
+  .avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .avatar .ini {
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; height: 100%; font-size: .62rem; font-weight: 700; color: var(--accent);
+  }
+  .pill {
+    font-size: .7rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+    padding: .1rem .5rem; border-radius: 999px;
+    border: 1px solid currentColor; color: var(--muted);
+  }
+  .pill-open { color: var(--ok); }
+  .pill-merged { color: var(--merge); }
+  .pill-closed { color: var(--danger); }
+  .prmeta .chip {
+    font-family: var(--mono); font-size: .81rem; text-decoration: none;
+    color: var(--accent); background: var(--accent-weak);
+    padding: .1rem .45rem; border-radius: 6px;
+  }
+  .prmeta .add { color: var(--ok); font-weight: 650; }
+  .prmeta .del { color: var(--danger); font-weight: 650; }
+  .prmeta .branch { font-family: var(--mono); font-size: .8rem; }
+
+  /* ---- triage chips (how the report was made, not what the PR does) ---- */
+  .triage { display: flex; flex-wrap: wrap; gap: .35rem; margin: .55rem 0 .2rem; }
+  .triage span {
+    font-size: .72rem; font-weight: 640; letter-spacing: .02em;
+    color: var(--muted); background: var(--code-bg);
+    border: 1px solid var(--border-soft); border-radius: 999px;
+    padding: .12rem .55rem;
+  }
+
   /* ---- table of contents ---- */
   nav.toc {
     background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 1rem 1.25rem;
+    border-radius: var(--radius); padding: 1.1rem 1.35rem 1.2rem;
     margin: 1.75rem 0 2.5rem; box-shadow: var(--shadow);
   }
   nav.toc .toc-label {
     font-size: .72rem; font-weight: 700; letter-spacing: .07em;
-    text-transform: uppercase; color: var(--muted); margin-bottom: .6rem;
+    text-transform: uppercase; color: var(--muted);
+    padding-bottom: .55rem; border-bottom: 1px solid var(--border-soft);
   }
   nav.toc ol {
-    list-style: none; margin: 0; padding: 0;
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
-    gap: .3rem 1.5rem; counter-reset: toc;
+    list-style: none; margin: .35rem 0 0; padding: 0; counter-reset: toc;
   }
   nav.toc li { counter-increment: toc; margin: 0; }
   nav.toc a {
-    text-decoration: none; color: var(--text); font-size: .92rem;
-    display: flex; gap: .55rem; padding: .28rem .35rem; border-radius: 6px;
-    align-items: baseline;
+    text-decoration: none; color: var(--text); font-size: .95rem;
+    display: flex; align-items: baseline; gap: .6rem;
+    padding: .34rem .4rem; border-radius: 6px;
   }
   nav.toc a::before {
-    content: counter(toc); color: var(--accent); font-variant-numeric: tabular-nums;
-    font-weight: 600; font-size: .8rem; min-width: 1.1rem;
+    content: counter(toc) "."; color: var(--muted);
+    font-variant-numeric: tabular-nums; font-size: .85rem;
+    min-width: 1.3rem; text-align: right; flex: none;
   }
-  nav.toc a:hover { background: var(--accent-weak); }
+  nav.toc a::after {
+    content: ""; flex: 1 1 auto; min-width: 1.25rem;
+    border-bottom: 1px dotted var(--border);
+  }
+  nav.toc a:hover { background: var(--accent-weak); color: var(--accent); }
+  nav.toc a:hover::before { color: var(--accent); }
 
   /* ---- headings ---- */
   h1, h2, h3 { line-height: 1.3; }
@@ -183,6 +251,13 @@ TEMPLATE = r"""<!doctype html>
 
   hr { border: none; border-top: 1px solid var(--border-soft); margin: 2.5rem 0; }
 
+  /* ---- screenshots (visual lens embeds these as plain markdown images) ---- */
+  #content img {
+    max-width: 100%; height: auto; display: block;
+    border: 1px solid var(--border); border-radius: 10px; background: var(--figure-bg);
+  }
+  td img { margin: 0 auto; }
+
   /* ---- mermaid figures ---- */
   .mermaid-graph {
     margin: 1.6rem 0; padding: 1.25rem; text-align: center;
@@ -221,9 +296,11 @@ TEMPLATE = r"""<!doctype html>
   <header class="doc">
     <div class="eyebrow">PR Understanding</div>
     <h1>__TITLE__</h1>
+__METABAR__
+__TRIAGE__
     <p class="meta">Map — falsify at a glance · generated __GENERATED__</p>
   </header>
-  <nav class="toc" id="toc" hidden><div class="toc-label">On this page</div><ol></ol></nav>
+  <nav class="toc" id="toc" hidden><div class="toc-label">Contents</div><ol></ol></nav>
   <div id="content"></div>
 </main>
 <script type="module">
@@ -235,6 +312,18 @@ const sources = [];
 
 function slugify(s) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'section';
+}
+
+// A heading may be a full narrative sentence — great in the body, unreadable as a nav
+// label. Prefer the part before an em-dash/colon, but only when that prefix is
+// substantial enough to name the section on its own.
+const TOC_MAX = 48;
+function tocLabel(s) {
+  const t = s.trim();
+  if (t.length <= TOC_MAX) return t;
+  const cut = t.search(/\s+[—–:]\s+/);
+  if (cut >= 12 && cut <= TOC_MAX) return t.slice(0, cut);
+  return t.slice(0, TOC_MAX - 1).trimEnd() + '…';
 }
 
 async function boot() {
@@ -253,7 +342,8 @@ async function boot() {
       h.id = id;
       const li = document.createElement('li');
       const a = document.createElement('a');
-      a.href = '#' + id; a.textContent = h.textContent;
+      a.href = '#' + id; a.textContent = tocLabel(h.textContent);
+      if (a.textContent !== h.textContent.trim()) a.title = h.textContent.trim();
       li.appendChild(a); ol.appendChild(li);
     }
     document.getElementById('toc').hidden = false;
@@ -327,6 +417,120 @@ def slug(t):
     return re.sub(r'[^a-z0-9]+', '-', t.lower()).strip('-') or 'pr'
 
 
+def load_meta(raw):
+    """`--meta` is either inline JSON or a path to a JSON file."""
+    if not raw:
+        return {}
+    text = raw if raw.lstrip().startswith('{') else open(raw, encoding='utf-8').read()
+    try:
+        meta = json.loads(text)
+    except (ValueError, OSError) as e:
+        print('pr-understanding: --meta ignored, could not parse -> %s' % e, file=sys.stderr)
+        return {}
+    return meta if isinstance(meta, dict) else {}
+
+
+def _url(u):
+    """Only http(s) survives — a meta blob must not be able to inject javascript:."""
+    return u.strip() if isinstance(u, str) and re.match(r'https?://', u.strip(), re.I) else ''
+
+
+def _date(v):
+    if not isinstance(v, str) or not v:
+        return ''
+    try:
+        d = datetime.datetime.fromisoformat(v.replace('Z', '+00:00'))
+    except ValueError:
+        return v
+    return '%s %d, %d' % (d.strftime('%b'), d.day, d.year)
+
+
+def build_metabar(meta):
+    """Author + avatar, state, link, dates, churn, branches — from `gh pr view --json`
+    output verbatim. Every part is optional; whatever is missing is left out."""
+    if not meta:
+        return ''
+    e = lambda v: html.escape(str(v), quote=True)
+    bits = []
+
+    author = meta.get('author')
+    author = {'login': author} if isinstance(author, str) else (author or {})
+    login = author.get('login') or ''
+    who = author.get('name') or login
+    if who:
+        # gh's author object has no avatar URL, but github.com/<login>.png is stable.
+        plain = re.match(r'^[A-Za-z0-9][A-Za-z0-9-]{0,38}$', login)
+        avatar = _url(meta.get('avatarUrl') or author.get('avatarUrl') or
+                      ('https://github.com/%s.png?size=64' % login if plain else ''))
+        profile = _url(author.get('url') or
+                       ('https://github.com/%s' % login if plain else ''))
+        initials = ''.join(w[0] for w in who.split()[:2]).upper() or '?'
+        # The <img> sits on top of the initials, so a failed load reveals them.
+        face = '<span class="avatar">%s<span class="ini">%s</span></span>' % (
+            '<img src="%s" alt="" onerror="this.remove()">' % e(avatar) if avatar else '',
+            e(initials))
+        tag = 'a href="%s"' % e(profile) if profile else 'span'
+        bits.append('<%s class="who">%s%s</%s>' % (tag, face, e(who), tag.split()[0]))
+
+    state = str(meta.get('state') or '').lower()
+    if meta.get('isDraft'):
+        state = 'draft'
+    if state:
+        bits.append('<span class="pill pill-%s">%s</span>' % (e(state), e(state)))
+
+    url = _url(meta.get('url'))
+    owner_repo, number = meta.get('repo') or '', meta.get('number') or ''
+    at = re.search(r'github\.com/([^/]+/[^/]+)/pull/(\d+)', url)
+    if at:
+        owner_repo, number = owner_repo or at.group(1), number or at.group(2)
+    label = ('%s#%s' % (owner_repo, number)).strip('#') or url
+    if url and label:
+        bits.append('<a class="chip" href="%s">%s</a>' % (e(url), e(label)))
+    elif label:
+        bits.append('<span class="chip">%s</span>' % e(label))
+
+    for key, verb in (('createdAt', 'opened'), ('mergedAt', 'merged'),
+                      ('closedAt', 'closed'), ('date', '')):
+        if key == 'closedAt' and meta.get('mergedAt'):
+            continue
+        when = _date(meta.get(key))
+        if when:
+            bits.append('<span>%s</span>' % e(('%s %s' % (verb, when)).strip()))
+
+    adds, dels = meta.get('additions'), meta.get('deletions')
+    files = meta.get('changedFiles')
+    if files is None and isinstance(meta.get('files'), list):
+        files = len(meta['files'])
+    churn = []
+    if isinstance(adds, int):
+        churn.append('<span class="add">+%d</span>' % adds)
+    if isinstance(dels, int):
+        churn.append('<span class="del">−%d</span>' % dels)
+    if isinstance(files, int):
+        churn.append('across %d file%s' % (files, '' if files == 1 else 's'))
+    if churn:
+        bits.append('<span>%s</span>' % ' '.join(churn))
+
+    head = meta.get('headRefName') or meta.get('branch')
+    base = meta.get('baseRefName') or meta.get('base')
+    if head and base:
+        bits.append('<span class="branch">%s → %s</span>' % (e(head), e(base)))
+
+    if not bits:
+        return ''
+    return '    <div class="prmeta">%s</div>' % '<span class="sep">·</span>'.join(bits)
+
+
+def build_triage(raw):
+    """"Deep lane · Feature lens · 14 meaningful files" -> one chip per `·` part."""
+    trim = lambda s: s.strip(' \t*_>')
+    parts = [trim(p) for p in re.split(r'[·|]', raw or '')]
+    # The skill may still prefix the line with its own label; the chips are the label.
+    parts[0] = trim(re.sub(r'^triage\s*:', '', parts[0], flags=re.I))
+    chips = ''.join('<span>%s</span>' % html.escape(p, quote=True) for p in parts if p)
+    return '    <div class="triage">%s</div>' % chips if chips else ''
+
+
 def open_in_browser(path):
     """Open `path` in the user's default browser as reliably as possible.
 
@@ -368,24 +572,30 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('input', nargs='?', help='Markdown file (default: stdin)')
     ap.add_argument('--title', default='PR Understanding')
+    ap.add_argument('--meta', help='PR metadata: `gh pr view --json …` output, inline or a file path')
+    ap.add_argument('--triage', help='routing line, e.g. "Deep lane · Feature lens · 14 meaningful files"')
     ap.add_argument('--out', help='output HTML path (default: stable temp path from title)')
     ap.add_argument('--no-open', action='store_true', help='do not launch a browser')
     a = ap.parse_args()
 
     md = open(a.input, encoding='utf-8').read() if a.input else sys.stdin.read()
-    generated = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
-    safe_title = re.sub(r'[<>]', '', a.title)
-    html = (TEMPLATE
-            .replace('__TITLE__', safe_title)
-            .replace('__GENERATED__', generated)
-            .replace('__PAYLOAD__', embed(md)))
+    subs = {
+        '__TITLE__': re.sub(r'[<>]', '', a.title),
+        '__GENERATED__': datetime.datetime.now().strftime('%Y-%m-%d %H:%M'),
+        '__METABAR__': build_metabar(load_meta(a.meta)),
+        '__TRIAGE__': build_triage(a.triage),
+        '__PAYLOAD__': embed(md),
+    }
+    # One pass, so a substituted value can never be re-scanned as a placeholder.
+    page = re.sub(r'__(?:TITLE|GENERATED|METABAR|TRIAGE|PAYLOAD)__',
+                  lambda m: subs[m.group(0)], TEMPLATE)
 
     # Stable path by default so re-running UPDATES the same artifact in place
     # (constant URL — just refresh the tab) instead of leaving random temp files.
     path = a.out or os.path.join(tempfile.gettempdir(),
                                  'pr-understanding-%s.html' % slug(a.title))
     with open(path, 'w', encoding='utf-8') as f:
-        f.write(html)
+        f.write(page)
 
     if not a.no_open:
         open_in_browser(path)

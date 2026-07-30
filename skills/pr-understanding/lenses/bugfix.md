@@ -45,6 +45,12 @@ moved in or out of a loop body, an early return added before a side effect.
 - Is there a **new/changed test** that **fails before, passes after**? A bugfix without
   a test will regress. If none, that's the top finding.
 - Does the test assert the **root-cause behavior**, or just re-assert the happy path?
+- **Was a test added and then removed?** Check the commit list (Step 1), not the net
+  diff — add-then-delete nets to zero and is invisible in `gh pr diff`. If it happened,
+  quote the removing commit's message and check whether the body still claims coverage.
+- **Prove the coverage claim rather than reading it.** Revert the fix and run the test
+  the PR points at. A test that still passes with the fix reverted is not guarding it —
+  and that is a finding, not a footnote.
 
 ## Blast radius
 
