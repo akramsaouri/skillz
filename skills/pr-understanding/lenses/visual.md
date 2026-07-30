@@ -9,9 +9,19 @@ answer that. Get them a preview.
 
 ## Preview mechanism — 5 tiers, best → fallback
 
-**If this lens fired, the report has a `## Visual preview` section. No exceptions.**
-Silently producing nothing is the failure mode this ladder exists to prevent — a
-reviewer who sees no visual section assumes there was nothing visual to see.
+**What is mandatory is the work, not the section.** If view code changed you must decide
+whether the *user-visible result* changed — and if it did, show it. Silently skipping
+that decision is the failure mode this ladder exists to prevent.
+
+Tiers 3 and 4 build their artifact out of the diff itself, so "no screenshots" is almost
+never "nothing to show". If you reach the bottom of the ladder with genuinely nothing,
+the lens misfired — a view file changed, but only its data path, no visual property and
+no structure. **Do not emit an empty section saying so:** a `## Visual preview` that
+reads "no visual evidence available" implies a visual change went unexamined. Drop the
+section and put the finding in one `## Standing checks` row instead, where it is still
+falsifiable and costs a line rather than a heading:
+
+| Any user-visible change? | **No** | the `*.tsx` edits are all in the data path — `useFeed.ts:40-58`; no style prop, layout or route touched |
 
 Try the tiers in order and use the best that succeeds. **Open the section by saying what
 kind of evidence this is and why nothing better was available** — one line, so the reader

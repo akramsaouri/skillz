@@ -39,11 +39,15 @@ cut it or fold it into a collapsed `<details>` block.
 4. **Never hand-write an identity line.** Author, state, link, dates, churn and branches
    are rendered from `--meta` (Step 9). A `PR #631 — branch → main · +2789/−1784` line in
    the markdown double-renders.
-5. **Never mention the skill's own machinery in the report body.** No lanes, no lens
-   names, no step numbers, no notes about which section was tuned — the reader wants a
-   map of their PR, not a description of how it was made. The one exception is the
-   header: `--triage` (Step 9) prints the lane and lens as chips, deliberately, so the
-   routing stays falsifiable. That is chrome. Keep it out of the markdown.
+5. **Never mention the skill's own machinery in the report body.** No lanes, no tier
+   numbers, no step numbers, no notes about which section was tuned — the reader wants a
+   map of their PR, not a description of how it was made.
+   The line is **provenance, not vocabulary**: calling the change a bugfix or a migration
+   is plain English and fine; tagging a row `(bugfix)` to mark which lens supplied the
+   check is machinery and is not. If a phrase would puzzle someone who has never heard of
+   this skill, cut it.
+   The one exception is the header: `--triage` (Step 9) prints the lane and lens as chips,
+   deliberately, so the routing stays falsifiable. That is chrome, not the markdown.
 
 ## Step 1 — Acquire the change (net diff + commit list + a tree to read)
 
@@ -56,7 +60,7 @@ own commit (later subagents grep the repo, not just the patch).
 SHA=$(gh pr view <n> --json headRefOid -q .headRefOid)   # pin it ONCE — see the FETCH_HEAD trap
 gh pr diff <n>                                     # net diff — see the --patch warning below
 gh pr view <n> --json title,body,author,url,number,state,isDraft,createdAt,mergedAt,closedAt,headRefName,baseRefName,mergeCommit,additions,deletions,changedFiles,files > /tmp/pr-<n>-meta.json
-git fetch origin refs/pull/<n>/head                # the PR's head, even if the branch was deleted
+git fetch origin refs/pull/<n>/head                # brings $SHA's objects local — works even if the branch was deleted
 git worktree add /tmp/pr-<n>-tree "$SHA"           # read and cite against THIS path
 gh pr view <n> --json commits \
   -q '.commits[] | "\(.oid[0:8])  \(.messageHeadline)"'   # the commit list — see below
@@ -64,10 +68,11 @@ git show --stat --oneline <oid>                    # what any one commit touched
 ```
 
 **The `FETCH_HEAD` trap — this one fails silently.** `FETCH_HEAD` is a scratch file, not
-a ref: *any* later fetch overwrites it, and `gh pr diff` fetches. So
-`git diff origin/<base>...FETCH_HEAD -- some/file` can return **0 bytes and exit 0** long
-after you thought you had pinned the PR — reading as "this file is unchanged" when it is
-not. Resolve `$SHA` once, up front, and use it everywhere. Never read `FETCH_HEAD` twice.
+a ref: the *next* `git fetch` of any kind overwrites it, including one run by a subagent
+or by you refreshing the base branch. So `git diff origin/<base>...FETCH_HEAD -- some/file`
+can return **0 bytes and exit 0** long after you thought you had pinned the PR — reading
+as "this file is unchanged" when it is not. Resolve `$SHA` once, up front, and use it
+everywhere. Never read `FETCH_HEAD` twice.
 
 - **Do NOT use `gh pr diff --patch`** — that returns the per-commit mbox *series*, so a
   file touched by two commits appears twice and a rename shows as add-then-rename. Pure
@@ -328,7 +333,7 @@ others at H2:
 | # | H2 | From | Present |
 |---|---|---|---|
 | 1 | `## What this changes` | Step 3 (+ the architecture diagram) | always |
-| 2 | `## Visual preview` | `lenses/visual.md` | only when the Visual lens fires |
+| 2 | `## Visual preview` | `lenses/visual.md` | Visual lens fires **and** it yields something to show |
 | 3 | `## Reading order` | Step 4 | always |
 | 4 | `## Findings` | your analysis | when there is something to report |
 | 5 | `## Blast radius` | Step 5 | always |
