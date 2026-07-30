@@ -21,8 +21,8 @@ then:
    changes. The lens picks the diagram type (ER for migrations, layout/style for
    visual, often none for dependency bumps).
 4. **Standing checks** — repo-aware invariants (the highest-leverage part; see
-   TUNE below) **plus lens-specific checks** (RLS for migrations, dark-mode/a11y for
-   visual, leaked-secret for config…).
+   "Tune it" below) **plus lens-specific checks** (RLS for migrations, dark-mode/a11y
+   for visual, leaked-secret for config…).
 5. **Verify these** — the PR's implicit claims rewritten as falsifiable questions
    with `file:line`, count scaled to the lane.
 6. **Lens-specific sections** — e.g. a **Visual preview** (author screenshots, changed
@@ -76,9 +76,11 @@ Then in Claude Code: **"understand PR #123"** (or "explain this diff"). The
 
 ## Tune it — standing checks (do this)
 
-The generic skill is fine; the *valuable* skill is repo-aware. Open `SKILL.md`,
-find the `<!-- TUNE -->` block in **Step 6**, and replace it with the invariants
-that always matter in your repo. Examples:
+Step 6 ships a usable default: it derives checks from your repo's own CLAUDE.md /
+AGENTS.md / lint config first, then the matched lens, then a short built-in list —
+capped at 6 rows so it can't turn into filler. That's fine unconfigured, but the
+*valuable* skill is repo-aware. Open `SKILL.md` Step 6 and add the invariants that
+always matter in your repo to the defaults list. Examples:
 
 - **Supabase / RLS**: does every changed RPC still enforce row-level security?
 - **Anything with money**: are all amounts still in minor units (no float leak)?

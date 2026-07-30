@@ -67,8 +67,14 @@ commit (later subagents grep the repo, not just the patch).
 `git fetch origin <head>` fails. Use the merge commit instead:
 - `SHA=$(gh pr view <n> --json mergeCommit -q .mergeCommit.oid)`
 - Net diff of just this PR: `git diff "$SHA^" "$SHA"`.
-- The post-merge tree already lives at `$SHA` in `main` history — blast-radius subagents
-  read it directly, no branch to restore.
+- **The tree you cloned is at `main`, NOT at the PR.** `main` has moved on; reading it
+  and citing the PR is the #1 source of confidently-wrong line numbers. Materialize the
+  PR's tree before you grep or cite:
+  `git worktree add /tmp/pr-<n>-tree "$SHA"` — then read and cite paths under that
+  worktree. (`git show "$SHA":<path>` works for one-off reads.)
+- Every `file:line` in the report MUST resolve against `$SHA`, not `main`. If you also
+  looked at `main` — e.g. to check whether a bug still exists — label that claim
+  explicitly as "at main today", never silently.
 
 **Branch / ref range:** `git diff <base>...<head>`. **Working tree:** `git diff`.
 
@@ -188,22 +194,31 @@ point — keep the source parseable:
 
 ## Step 6 — Standing checks (repo-aware invariants)
 
-Run the invariants that always matter in THIS repo. **This is the highest-leverage
-part of the skill.** Answer each yes/no/N-A with a `file:line`. **The matched lens
-contributes its own checks** (Migration → RLS preserved? reversible? backfill locks?;
-Visual → dark-mode + a11y contrast?; Config → secret newly logged?).
+Run the checks that are load-bearing for THIS diff. **This is the highest-leverage
+part of the skill.** Answer each with a `file:line`.
 
-<!-- TUNE: replace with the invariants that matter in your repo. Examples:
-- Does every changed Supabase RPC preserve row-level security / auth checks?
-- Are all monetary amounts still in minor units (no float, no major-unit leak)?
-- Do new DB reads/writes respect tenant/user scoping?
-- Are timestamps stored UTC and only formatted to local at the edge?
-- Any new external call without a timeout / error path?
-- Any secret, token, or PII newly logged?
-- (React/RN) Any hook called conditionally or inside a loop / `.map()`? Does the hook
-  COUNT stay stable across renders?
--->
-- (add your repo's invariants here)
+**Never mention the skill's own configuration state in the report.** The reader wants
+a map of their PR, not a note about which section was tuned.
+
+Ceiling: **6 rows** (Deep: 8). A check that is "N/A" for this PR is not a row — drop
+it. Prefer one check you can falsify at a `file:line` over three you answer "N-A".
+
+Derive the check-set in this order:
+1. The repo's own stated rules — CLAUDE.md / AGENTS.md / CONTRIBUTING, a lint or CI
+   config. Cite where you got it.
+2. The matched lens's checks (Migration → RLS preserved? reversible? backfill locks?;
+   Visual → dark-mode + a11y contrast?; Config → secret newly logged?).
+3. The defaults below, only where the stack makes them apply.
+
+Defaults, applied only when relevant:
+- Auth/tenancy: do new DB reads/writes preserve row-level security and user scoping?
+- Money: are amounts still in minor units — no float, no major-unit leak?
+- Time: stored UTC, formatted local only at the edge?
+- External calls: any new call without a timeout or error path?
+- Secrets: any token, key or PII newly logged?
+- React/RN: any hook called conditionally or in a loop / `.map()`? Does the hook COUNT
+  stay stable across renders?
+- Swift/Kotlin: any main-thread blocking, retained self, or lifecycle-unsafe capture?
 
 ## Step 7 — "Verify these"
 
