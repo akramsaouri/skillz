@@ -1,10 +1,10 @@
 {
-  "name": "sat-skills",
+  "name": "skills",
   "version": "0.1.0",
-  "description": "Sat's collection of Claude Code skills",
+  "description": "Akram Saouri's collection of Claude Code skills",
   "author": {
-    "name": "Sat",
-    "url": "https://saouri.ink"
+    "name": "Akram Saouri",
+    "url": "https://github.com/akramsaouri"
   },
   "homepage": "https://github.com/akramsaouri/skillz",
   "license": "MIT"
