@@ -1,17 +1,9 @@
 ---
 name: pr-understanding
 description: >
-  Understand a pull request or diff by building a falsifiable MAP instead of a
-  prose summary. Use when the user says "understand PR #123", "explain this PR",
-  "review this diff", "what does this change do", "help me understand this
-  branch/change", or wants to grasp AI-generated code before merging. TRIAGES the
-  PR first (size lane x scope lens) so a one-line fix, a UI tweak, a DB migration,
-  and a 40-file feature each get the RIGHT depth and the RIGHT questions — not one
-  generic treatment. Produces reading order, a Mermaid diagram of the changed
-  flow, a "verify these" checklist, and lens-specific sections (visual preview,
-  migration safety, dependency changelog...), rendered to an ephemeral HTML page
-  that opens in the browser. Fans out parallel subagents to map blast radius when
-  the lane warrants it.
+  Understand a pull request, diff, or branch by building a falsifiable MAP
+  instead of a prose summary. Use when the user wants to grasp what a change
+  does before merging it, especially AI-written code.
 ---
 
 # PR Understanding
@@ -39,16 +31,6 @@ cut it or fold it into a collapsed `<details>` block.
    else.
 2. **Every claim is falsifiable and located.** Cite `file:line`. If you cannot
    point to it, do not assert it.
-3. **Triage before you dig (Step 2). Match effort to the PR.** A 5-line `??` fix
-   and a 40-file feature must NOT get identical treatment. The triage sets a **lane**
-   (how much machinery) and one or more **lenses** (which questions, diagram, checks,
-   special sections). Skipping triage is how this skill goes generic.
-4. **Always (re)render the HTML artifact when done.** Assemble the report as markdown
-   and pipe it through `render.py` as the final step of *every* run. It writes to a
-   **stable path** derived from the title, so re-running on the same PR **updates the
-   same artifact in place** — same URL, just refresh the tab. Commit nothing.
-5. **Read the whole repo for context, not just the diff.** Blast radius lives
-   outside the changed lines.
 
 ## Step 1 — Acquire the change (net diff + a tree to read)
 
@@ -164,15 +146,16 @@ Where to start, what to ignore:
 - **Ignore** — generated, moved, renamed, or pure-format churn (the excluded set from
   Step 2's meaningful-churn count). Say *why* it is safe to skip.
 
+**Every changed file from Step 1 lands in exactly one bucket.** Count them against the
+changed-file list — if the totals disagree, you dropped a file.
+
 ## Step 5 — Diagram the CHANGED flow (Mermaid)
 
 **Lead with architecture.** The first diagram shows the change at the level of
 *components and boundaries* — the modules/services/layers touched and how data crosses
 between them. Only THEN, if a specific mechanism carries the risk, add a second, tighter
-diagram. **The matched lens picks the diagram type** (e.g. Migration → `erDiagram`
-before/after; Visual → a component/layout tree or style-delta, often no sequence
-diagram; Dependency → often no diagram at all). Skip the diagram entirely on the Fast
-lane when the flow is unchanged.
+diagram. **The matched lens's `## Diagram` section picks the type — follow it.** Skip
+the diagram entirely on the Fast lane when the flow is unchanged.
 
 Pick the detail type from the change shape:
 - Request / RPC / API / event path → **sequenceDiagram**.
@@ -206,8 +189,7 @@ it. Prefer one check you can falsify at a `file:line` over three you answer "N-A
 Derive the check-set in this order:
 1. The repo's own stated rules — CLAUDE.md / AGENTS.md / CONTRIBUTING, a lint or CI
    config. Cite where you got it.
-2. The matched lens's checks (Migration → RLS preserved? reversible? backfill locks?;
-   Visual → dark-mode + a11y contrast?; Config → secret newly logged?).
+2. The matched lens's `## Standing checks (…)` section.
 3. The defaults below, only where the stack makes them apply.
 
 Defaults, applied only when relevant:
@@ -223,9 +205,8 @@ Defaults, applied only when relevant:
 ## Step 7 — "Verify these"
 
 Restate the PR's implicit claims as **falsifiable questions the user checks against
-the code** — count scales with the lane (Fast 2–3, Deep 5–7+), and **the lens supplies
-its own** (Migration → "does the down-migration actually reverse the up?"; Dependency →
-"does any breaking change in the changelog hit our call sites?"). Shape:
+the code** — count scales with the lane (Fast 2–3, Deep 5–7+), and **the lens's
+`## Verify these (…)` section supplies its own**. Shape:
 > "Claims the retry only fires on 5xx — verify at `api/client.ts:88` that a 4xx
 > falls through without retrying."
 
@@ -244,7 +225,8 @@ printf '%s' "$REPORT" | python3 "<this-skill-dir>/render.py" --title "PR #<n>"
 ```
 
 The title determines a **stable output path**, so **re-running updates the same artifact
-in place**. Keep the title identical across re-renders of the same PR.
+in place**. Keep the title identical across re-renders of the same PR. The page is
+ephemeral and lives in a temp dir — **commit nothing**.
 
 **Rendering is the last action of every run.** If you change anything after the first
 render, regenerate so the page is never stale, then report the path and **stop** — the
