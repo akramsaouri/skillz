@@ -73,11 +73,19 @@ This is the step that stops the skill from being generic. Fingerprint the PR fro
 ### First, compute MEANINGFUL churn
 
 Size is measured on **meaningful** churn, not raw `+/-`. **Exclude** from the count:
-lockfiles (`*.lock`, `package-lock.json`, `Podfile.lock`, `yarn.lock`, `Cargo.lock`,
-`Package.resolved`), snapshots (`__snapshots__`, `*.snap`), generated code (`*.g.dart`,
-`*.pb.go`, `openapi`/`graphql` codegen, `dist/`, `build/`), vendored deps, and pure
-moves/renames. A `pod install` lockfile bump must not fake "large". Note the excluded
-files — the *Reading order* section will list them under "Ignore".
+- **Lockfiles** — `*.lock`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`,
+  `Podfile.lock`, `Package.resolved`, `Cargo.lock`, `go.sum`, `poetry.lock`, `uv.lock`,
+  `Gemfile.lock`, `composer.lock`, `pubspec.lock`, `mix.lock`.
+- **Snapshots & fixtures** — `__snapshots__`, `*.snap`, recorded HTTP cassettes (VCR),
+  golden/approval files, reference screenshots.
+- **Generated code** — `*.g.dart`, `*.pb.go`, `*_pb2.py`, sqlc/jOOQ/Ent output,
+  `openapi`/`graphql` codegen, Prisma client, `dist/`, `build/`, minified bundles.
+- **Vendored deps** and **pure moves/renames** (`git diff -M -C --stat` tells you which).
+
+A `pod install` lockfile bump must not fake "large". Note the excluded files — the
+*Reading order* section lists them under "Ignore". **Excluded ≠ unexamined:** a
+generated file that *should* have changed and didn't is a finding (see the Migration
+and Dependency lenses), and a snapshot baseline that changed is evidence about intent.
 
 ### Axis 1 — SIZE → lane (how much machinery)
 
@@ -98,13 +106,13 @@ lens, **read its file** and fold its guidance into the relevant steps:
 
 | Lens | Fires when… | Lens file |
 |---|---|---|
-| **Visual / UI** *(previewable)* | changes touch view files (`*.tsx/jsx`, SwiftUI/`*.swift` views, `*.vue`), StyleSheet/CSS, color/spacing/font/layout props; or the PR body has screenshots | `lenses/visual.md` |
-| **Migration / schema** | `*.sql`, `**/migrations/**`, `supabase/migrations`, Prisma/Drizzle schema, any DB DDL | `lenses/migration.md` |
-| **Dependency bump** | only manifests + lockfiles change (`package.json`, `Podfile`, `go.mod`, `Cargo.toml`, `*.gradle`) — version numbers, no app logic | `lenses/dependency.md` |
-| **Refactor / no-behavior-change** | renames, moves, de-exports, extractions, type-only edits; author *claims* no behavior change | `lenses/refactor.md` |
-| **Feature / new flow** | new screens/routes/endpoints/files introducing behavior | `lenses/feature.md` |
+| **Visual / UI** *(previewable)* | view/style code — `*.tsx/jsx`, `*.vue`, `*.svelte`, templates, SwiftUI views, Compose, Flutter widgets, CSS/Tailwind/StyleSheet, design tokens; or the PR body has screenshots | `lenses/visual.md` |
+| **Migration / schema** | `*.sql`, `**/migrations/**`, any migration toolchain (Prisma/Drizzle, Rails `db/migrate`, Django, Alembic, Flyway, Ecto), any DB DDL | `lenses/migration.md` |
+| **Dependency bump** | only manifests + lockfiles change (`package.json`, `go.mod`, `Cargo.toml`, `pyproject.toml`, `Gemfile`, `Podfile`, `*.gradle`…) — versions, no app logic | `lenses/dependency.md` |
+| **Refactor / no-behavior-change** | renames, moves, visibility changes, extractions, type-only edits; author *claims* no behavior change | `lenses/refactor.md` |
+| **Feature / new flow** | new screens/routes/endpoints/jobs/files introducing behavior | `lenses/feature.md` |
 | **Bugfix** | title/body says fix; small targeted change to existing logic | `lenses/bugfix.md` |
-| **Config / CI / infra** | `.github/`, CI yaml, Dockerfiles, env/secrets, build config | `lenses/config.md` |
+| **Config / CI / infra** | CI config (Actions, GitLab, CircleCI…), Dockerfiles, IaC (Terraform/Helm/k8s), env/secrets, build config | `lenses/config.md` |
 
 If **nothing** matches cleanly, treat it as **Feature/Standard** and note the
 ambiguity as the first *verify* item.
@@ -115,9 +123,9 @@ falsify the triage itself:
 
 ## Step 3 — Blast radius (lane-gated)
 
-**Deep lane → fan out PARALLEL subagents.** One `Task` each, dispatched together in a
-single message so they run concurrently. Each returns a compact `file:line` bullet
-list, no prose:
+**Deep lane → fan out PARALLEL subagents.** One subagent each, dispatched together in a
+single message so they run concurrently (whatever your harness calls the tool). Each
+returns a compact `file:line` bullet list, no prose:
 
 - **Callers** — for every exported/changed function, symbol, endpoint or RPC, who
   calls it, and are the call sites compatible with the new signature/behavior?
@@ -192,15 +200,31 @@ Derive the check-set in this order:
 2. The matched lens's `## Standing checks (…)` section.
 3. The defaults below, only where the stack makes them apply.
 
-Defaults, applied only when relevant:
-- Auth/tenancy: do new DB reads/writes preserve row-level security and user scoping?
-- Money: are amounts still in minor units — no float, no major-unit leak?
-- Time: stored UTC, formatted local only at the edge?
+The lists below are a **menu, not a checklist** — pick the few that bite on this diff.
+
+Cross-stack, applied only when relevant:
+- Auth/tenancy: do new DB reads/writes stay scoped to the current user/tenant — and is
+  ownership checked per *resource*, not just "authenticated"?
+- Money: amounts still in minor units — no float, no major-unit leak?
+- Time: stored UTC, formatted local only at the edge? Any DST-naive date math?
 - External calls: any new call without a timeout or error path?
 - Secrets: any token, key or PII newly logged?
-- React/RN: any hook called conditionally or in a loop / `.map()`? Does the hook COUNT
-  stay stable across renders?
-- Swift/Kotlin: any main-thread blocking, retained self, or lifecycle-unsafe capture?
+- Concurrency: new shared mutable state without a lock, or a failure swallowed by an
+  unawaited task / unhandled rejection / bare `go` routine?
+- Boundary input: request data parsed by a schema, or trusted?
+
+Stack-specific, when the stack matches:
+- **React / React Native** — hook called conditionally or in a loop / `.map()`; hook
+  COUNT stable across renders? Effect missing a cleanup or a dependency?
+- **Swift / Kotlin** — main-thread blocking, retained `self`, lifecycle-unsafe capture?
+- **Python / Django** — N+1 (missing `select_related`/`prefetch_related`), mutable
+  default arg, blocking I/O inside an async view?
+- **Rails** — N+1 (missing `includes`), mass assignment via unpermitted params, a
+  callback with a side effect firing on every save?
+- **Go** — `err` dropped, missing `defer` close, goroutine leak, context not propagated?
+- **Node backend** — unhandled rejection, missing `await`, sync fs/crypto on the hot path?
+- **SQL-heavy** — new query without an index on the filtered column; predicate on a
+  nullable column silently excluding `NULL` rows?
 
 ## Step 7 — "Verify these"
 

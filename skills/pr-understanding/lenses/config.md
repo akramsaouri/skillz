@@ -1,9 +1,12 @@
 # Lens: Config / CI / infra
 
-Fires on `.github/`, CI yaml, Dockerfiles, env/secrets, build config, `*.toml`/`*.yaml`
-infra. These PRs look trivial and ship rarely-tested paths — a broken workflow or a
-leaked secret isn't caught by app tests. The blast radius is **the pipeline and the
-runtime environment**, not the app code.
+Fires on CI/CD config (`.github/workflows`, `.gitlab-ci.yml`, `.circleci`,
+`.buildkite`, `Jenkinsfile`), Dockerfiles and Compose files, infra-as-code (Terraform,
+Pulumi, CloudFormation, Helm charts, k8s manifests), env/secrets, and build config
+(`*.toml`/`*.yaml`, `vite.config`, `webpack`, `tsconfig`, Gradle, `Makefile`). These PRs
+look trivial and ship rarely-tested paths — a broken workflow or a leaked secret isn't
+caught by app tests. The blast radius is **the pipeline and the runtime environment**,
+not the app code.
 
 ## Read for these
 
@@ -11,9 +14,17 @@ runtime environment**, not the app code.
   in a step, written to logs, passed as a build-arg (baked into image layers),
   interpolated into a `run:` block where it prints, or committed as a literal instead
   of a `secrets.*` reference? **A newly logged secret is the #1 finding here.**
-- **`pull_request_target` / permissions.** In GitHub Actions, `pull_request_target`
-  runs with repo secrets against **untrusted PR code** — a classic exfiltration hole.
-  Check `permissions:` is least-privilege (not blanket `write-all`).
+- **Untrusted code running with secrets.** The classic exfiltration hole, by provider:
+  GitHub Actions `pull_request_target` (runs with repo secrets against **fork PR code**)
+  and `permissions:` set to blanket `write-all`; GitLab CI secrets not marked
+  *Protected* so they reach fork/branch pipelines; CircleCI "pass secrets to forked
+  PRs". Also: does any step interpolate an attacker-controlled value —
+  `${{ github.event.pull_request.title }}`, a branch name — straight into a `run:`
+  block? That's shell injection into a privileged runner.
+- **Infra-as-code blast radius.** For Terraform/Helm/k8s: does the change
+  **replace** rather than update a resource (a rename usually means destroy+create),
+  widen a security group / IAM policy / bucket ACL, or drop a `prevent_destroy`?
+  Is there a plan output in the PR to read, or are you guessing?
 - **Env var changes.** New required env var — is it documented, defaulted, and set in
   every environment (local `.env.example`, CI, prod)? A new required var missing in one
   env breaks that env silently. Renamed var — all readers updated?
@@ -41,11 +52,12 @@ Usually none. For a multi-job pipeline change, a small **flowchart of the job gr
 ## Standing checks (config)
 
 - No secret echoed, logged, or baked into an image layer / build-arg?
-- Actions & base images pinned (SHA/digest), not floating tags?
-- `pull_request_target` (if any) not running untrusted code with secrets;
-  `permissions:` least-privilege?
+- Third-party actions & base images pinned (SHA/digest), not floating tags?
+- No untrusted code (fork PR) running with secrets; job permissions least-privilege?
+- No attacker-controlled value interpolated into a shell step?
 - New/renamed env var set + documented across ALL environments?
 - No accidental trigger widening or lost coverage in a matrix change?
+- (IaC) No resource replacement or widened IAM/network rule hiding in the plan?
 
 ## Verify these (config)
 

@@ -22,6 +22,22 @@ specific to *new* code paths.
 - **Analytics / feature flag.** Is the feature behind a flag (safe rollout) or shipped
   hot? Are the expected events instrumented (if the repo has that convention)?
 
+**If the new surface is a UI flow**, the states above are the whole game. **If it's an
+API, endpoint, job, or consumer**, swap in these:
+- **Input validation at the boundary** — is the request body/params parsed by a schema
+  (zod, pydantic, serializer, struct tags), or trusted? Is authorization checked per
+  *resource*, not just "is logged in"? (IDOR: can I pass someone else's id?)
+- **Idempotency & retries** — can this be called twice (client retry, at-least-once
+  queue) without double-charging or duplicating a row? Is there an idempotency key or a
+  unique constraint backing it?
+- **Unbounded work** — a list endpoint without pagination or a cap, a query without a
+  `LIMIT`, an N+1 across the new relation, an unbounded fan-out to a downstream service.
+- **Failure semantics** — is the write transactional across all the rows it touches?
+  What's left behind if the process dies halfway? Is a background job's failure visible
+  (dead-letter, alert) or silent?
+- **Rate limiting & cost** — is the new endpoint rate-limited, and does it call a paid
+  or slow third party per request?
+
 ## Blast radius (full fan-out)
 
 All four Deep-lane subagents. Plus feature-specific:
@@ -39,9 +55,12 @@ modifies an existing flow, show **old vs new**.
 
 ## Standing checks (feature)
 
-- All states handled (loading/empty/error/success/offline)? Which are missing?
+- (UI) All states handled (loading/empty/error/success/offline)? Which are missing?
 - Every new external call has a timeout + error path?
-- New screen/endpoint behind correct auth (incl. deep-link reachability)?
+- New screen/endpoint behind correct auth — including deep-link reachability and
+  per-resource ownership, not just "authenticated"?
+- (API) Input validated at the boundary; the write idempotent under retry?
+- (API) Nothing unbounded — pagination, `LIMIT`, no N+1 on the new relation?
 - New logic reuses existing utils rather than duplicating?
 - Behind a feature flag, or justified to ship hot?
 - (repo convention) Analytics events instrumented?
@@ -51,5 +70,9 @@ modifies an existing flow, show **old vs new**.
 - "The new flow handles success at `file:line` — verify the **error** path exists;
   which state renders when the call at `file:line` throws?"
 - "New endpoint `file:line` — verify auth gating; can a deep link reach it unauthed?"
+- "`file:line` looks up the record by an id from the request — verify it also checks the
+  caller *owns* it, or any authenticated user can pass someone else's id."
+- "The write at `file:line` isn't idempotent — verify a client retry or queue redelivery
+  can't create a second row / second charge."
 - "Claims this is net-new — verify `X` at `file:line` isn't duplicating the existing
   `Y` at `file:line`."

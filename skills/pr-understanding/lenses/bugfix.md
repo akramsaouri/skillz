@@ -19,11 +19,26 @@ logic. The reviewer's job is not "does this code run" but three sharper question
 ## The one-character trap (read the fix char by char)
 
 Bugfixes concentrate behavior-flipping micro-edits — read each:
-- `||` → `??` (now `0`/`""`/`false` no longer fall through — often *is* the fix, or
-  introduces a *new* bug if `0` was a valid "unset")
-- added/removed `await` (a race fix — or a new one)
-- `===`/`==` swap, flipped boolean, changed default, off-by-one on a bound,
-  `<`↔`<=`, removed `!`, reordered conditions (short-circuit changes).
+
+**Any language:** flipped boolean, changed default, off-by-one on a bound, `<`↔`<=`,
+removed negation, reordered conditions (short-circuit changes), a `break`/`return`
+moved in or out of a loop body, an early return added before a side effect.
+
+**Language-specific one-character traps:**
+- **JS/TS** — `||`→`??` (now `0`/`""`/`false` no longer fall through — often *is* the
+  fix, or a *new* bug if `0` was a valid "unset"); `==`↔`===`; added/removed `await`
+  (a race fix, or a new one); `?.` swallowing an error that should throw.
+- **Python** — `is`↔`==` (identity vs equality — works for small ints, then doesn't);
+  a mutable default arg; `except:` widened or narrowed; a missing `await` on a coroutine
+  (silently never runs).
+- **Go** — `=`↔`:=` (shadows the outer variable, so the fix writes to a copy); an `err`
+  check added or dropped; `defer` moved relative to the error path; value↔pointer
+  receiver (mutations stop propagating).
+- **Swift/Kotlin** — `?`↔`!` force-unwrap, `??` default added, `let`↔`var`,
+  `weak`/`strong` capture flipped, `==` vs `===` identity.
+- **Java/C#** — `==` vs `.equals`/`Equals` on boxed values or strings.
+- **SQL** — `WHERE` predicate on a nullable column (`!= 'x'` excludes `NULL` rows),
+  `JOIN`↔`LEFT JOIN`, an added `DISTINCT` masking a duplicate-rows bug upstream.
 
 ## Regression test — did it get locked in?
 
