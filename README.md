@@ -6,7 +6,7 @@
 
 ```
 /plugin marketplace add akramsaouri/skillz
-/plugin install skills@akramsaouri-skillz
+/plugin install akramsaouri-skillz@akramsaouri-skillz
 ```
 
 ### Codex, Cursor, and other agents

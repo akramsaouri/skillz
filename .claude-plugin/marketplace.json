@@ -10,7 +10,7 @@
   },
   "plugins": [
     {
-      "name": "skills",
+      "name": "akramsaouri-skillz",
       "source": ".",
       "description": "Akram Saouri's collection of Claude Code skills"
     }
