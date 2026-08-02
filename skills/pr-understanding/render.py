@@ -258,6 +258,31 @@ TEMPLATE = r"""<!doctype html>
   }
   td img { margin: 0 auto; }
 
+  /* ---- UI mocks: before | after panels the visual lens rebuilds from the diff ---- */
+  .pv {
+    display: grid; gap: 1rem; margin: 1.5rem 0;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  }
+  .pv figure { margin: 0; }
+  .pv figcaption {
+    font-size: .72rem; font-weight: 700; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: .45rem;
+  }
+  .mock {
+    display: flex; flex-direction: column; gap: .55rem;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: .9rem; box-shadow: var(--shadow);
+    font-size: .82rem; line-height: 1.4;
+  }
+  .mock .row { display: flex; align-items: center; gap: .5rem; }
+  .mock .btn {
+    flex: 1; text-align: center; padding: .45rem .6rem; font-size: .78rem;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--code-bg);
+  }
+  .mock .ph { height: .55rem; border-radius: 999px; background: var(--border-soft); }
+  .mock .is-new { outline: 2px solid var(--ok); outline-offset: 3px; }
+  .mock .is-gone { outline: 2px dashed var(--danger); outline-offset: 3px; opacity: .55; }
+
   /* ---- mermaid figures ---- */
   .mermaid-graph {
     margin: 1.6rem 0; padding: 1.25rem; text-align: center;
