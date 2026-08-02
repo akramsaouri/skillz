@@ -100,8 +100,10 @@ TEMPLATE = r"""<!doctype html>
     font-size: 16px; line-height: 1.7;
     background: var(--bg); color: var(--text);
     -webkit-font-smoothing: antialiased;
+    -webkit-text-size-adjust: 100%;
+    overflow-wrap: break-word;
   }
-  main { max-width: var(--maxw); margin: 0 auto; }
+  main { max-width: var(--maxw); margin: 0 auto; width: 100%; }
 
   /* ---- header ---- */
   header.doc { margin-bottom: 2rem; }
@@ -218,7 +220,10 @@ TEMPLATE = r"""<!doctype html>
   a { color: var(--accent); text-underline-offset: 2px; }
 
   /* ---- code ---- */
-  code { font-family: var(--mono); font-size: .86em; }
+  /* `file:line` refs are long unbreakable tokens — let them break anywhere
+     rather than push the whole page sideways on a narrow screen. */
+  code { font-family: var(--mono); font-size: .86em; overflow-wrap: anywhere; }
+  a { overflow-wrap: anywhere; }
   :not(pre) > code {
     background: var(--code-bg); color: var(--code-text);
     padding: .12em .4em; border-radius: 5px;
@@ -240,6 +245,13 @@ TEMPLATE = r"""<!doctype html>
   blockquote p { margin: .3rem 0; }
 
   /* ---- tables ---- */
+  /* Wide comparison tables can't compress on a phone — the JS wraps each one in
+     .table-scroll so it scrolls sideways on its own instead of crushing columns. */
+  .table-scroll {
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    margin: 1.2rem 0; border: 1px solid var(--border); border-radius: 10px;
+  }
+  .table-scroll > table { margin: 0; border: none; border-radius: 0; }
   table {
     border-collapse: collapse; width: 100%; margin: 1.2rem 0;
     font-size: .93rem; overflow: hidden; border-radius: 10px;
@@ -287,9 +299,22 @@ TEMPLATE = r"""<!doctype html>
   .mermaid-graph {
     margin: 1.6rem 0; padding: 1.25rem; text-align: center;
     background: var(--figure-bg); border: 1px solid var(--border);
-    border-radius: var(--radius); overflow-x: auto; box-shadow: var(--shadow);
+    border-radius: var(--radius); overflow-x: auto;
+    -webkit-overflow-scrolling: touch; box-shadow: var(--shadow);
   }
+  /* Mermaid writes an inline max-width on the <svg> sized to the diagram's
+     natural width. On a phone that cap shrinks the diagram to an illegible
+     smudge, so below the breakpoint we drop the cap and scroll the figure
+     instead — paint() pins an explicit pixel width so this is deterministic. */
   .mermaid-graph svg { max-width: 100%; height: auto; }
+  @media (max-width: 44rem) {
+    .mermaid-graph { padding: .9rem; text-align: left; }
+    .mermaid-graph svg { max-width: none; }
+    .mermaid-graph::-webkit-scrollbar { height: 4px; }
+    .mermaid-graph::-webkit-scrollbar-thumb {
+      background: var(--border); border-radius: 4px;
+    }
+  }
   .diagram-error {
     margin: 1.6rem 0; border: 1px solid var(--warn-border);
     border-radius: var(--radius); overflow: hidden; background: var(--warn-bg);
@@ -314,6 +339,37 @@ TEMPLATE = r"""<!doctype html>
   summary::-webkit-details-marker { display: none; }
   summary::before { content: "▸ "; color: var(--muted); }
   details[open] summary::before { content: "▾ "; }
+
+  /* ---- narrow screens (phones) ---- */
+  @media (max-width: 44rem) {
+    body { padding: 1.5rem 1rem 5rem; font-size: 16px; line-height: 1.65; }
+    header.doc h1 { font-size: 1.5rem; }
+    .prmeta { font-size: .8rem; gap: .3rem .45rem; }
+    /* The " · " separators only make sense on one line; wrapped, they float
+       to the start of a row and read as noise. */
+    .prmeta .sep { display: none; }
+    .prmeta .branch { overflow-wrap: anywhere; }
+    nav.toc { padding: .9rem 1rem 1rem; margin: 1.25rem 0 1.75rem; }
+    nav.toc a { font-size: .9rem; padding: .42rem .3rem; }
+    /* The dotted leader needs a full line to itself once labels wrap. */
+    nav.toc a::after { display: none; }
+    h2 { font-size: 1.22rem; margin: 2.2rem 0 .8rem; padding-top: 1.2rem; }
+    h3 { font-size: 1.05rem; }
+    ul, ol { padding-left: 1.15rem; }
+    pre { padding: .8rem .85rem; font-size: .8rem; }
+    blockquote { padding: .6rem .85rem; }
+    .table-scroll { margin: 1rem -1rem; border-radius: 0; border-left: none; border-right: none; }
+    .table-scroll > table { font-size: .84rem; }
+    /* Let the widest column keep its shape; the wrapper scrolls. */
+    .table-scroll th, .table-scroll td { padding: .5rem .6rem; }
+    .table-scroll th:first-child, .table-scroll td:first-child { min-width: 9rem; }
+    details { padding: .3rem .85rem; }
+  }
+  @media (max-width: 26rem) {
+    body { padding: 1.25rem .8rem 4.5rem; }
+    header.doc h1 { font-size: 1.32rem; }
+    .table-scroll { margin: 1rem -.8rem; }
+  }
 </style>
 </head>
 <body>
@@ -374,6 +430,16 @@ async function boot() {
     document.getElementById('toc').hidden = false;
   }
 
+  // Wrap every table so a wide one scrolls sideways on its own instead of
+  // squeezing 4 columns of file:line refs into a phone's width.
+  el.querySelectorAll('table').forEach(t => {
+    if (t.parentElement?.classList.contains('table-scroll')) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'table-scroll';
+    t.replaceWith(wrap);
+    wrap.appendChild(t);
+  });
+
   // Swap each ```mermaid code block for a placeholder that remembers its source,
   // so we can RE-render it whenever the OS theme flips.
   el.querySelectorAll('pre > code.language-mermaid').forEach((code, i) => {
@@ -385,6 +451,40 @@ async function boot() {
   });
   await paint();
   mq.addEventListener('change', paint);
+
+  // Rotating the phone changes which diagrams fit — re-evaluate, debounced.
+  let rt;
+  addEventListener('resize', () => {
+    clearTimeout(rt);
+    rt = setTimeout(() => document.querySelectorAll('.mermaid-graph').forEach(sizeDiagram), 150);
+  });
+}
+
+// Mermaid emits `style="max-width: NNNpx"` plus a viewBox. Wide-on-desktop is
+// fine, but on a phone that lets the SVG scale down to ~350px and the node text
+// becomes unreadable. Pin an explicit width: its natural size when the figure is
+// too narrow to hold it (the figure then scrolls), otherwise Mermaid's own cap,
+// which leaves a diagram that already fits at exactly the size it has today.
+const MIN_LEGIBLE_SCALE = 0.92;
+function sizeDiagram(holder) {
+  const svg = holder.querySelector('svg');
+  if (!svg) return;
+  const vb = svg.viewBox?.baseVal;
+  const natural = vb && vb.width ? vb.width : parseFloat(svg.style.maxWidth) || 0;
+  if (!natural) return;
+  svg.dataset.natural = String(natural);
+  const avail = holder.clientWidth
+    - parseFloat(getComputedStyle(holder).paddingLeft || 0)
+    - parseFloat(getComputedStyle(holder).paddingRight || 0);
+  if (avail > 0 && avail < natural * MIN_LEGIBLE_SCALE) {
+    // Too tight to render legibly — keep full size and scroll the figure.
+    svg.style.maxWidth = 'none';
+    svg.style.width = natural + 'px';
+  } else {
+    svg.style.maxWidth = natural + 'px';
+    svg.style.width = '';
+  }
+  svg.style.height = 'auto';
 }
 
 async function paint() {
@@ -405,6 +505,7 @@ async function paint() {
       const g = document.createElement('div');
       g.className = 'mermaid-graph'; g.dataset.idx = String(idx); g.innerHTML = svg;
       holder.replaceWith(g);
+      sizeDiagram(g);
     } catch (e) {
       const box = document.createElement('div');
       box.className = 'diagram-error'; box.dataset.idx = String(idx);
