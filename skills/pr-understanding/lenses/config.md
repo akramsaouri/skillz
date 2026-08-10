@@ -10,32 +10,36 @@ not the app code.
 
 ## Read for these
 
-- **Secrets & exposure.** Any secret/token/key moved into a place it can leak: echoed
-  in a step, written to logs, passed as a build-arg (baked into image layers),
-  interpolated into a `run:` block where it prints, or committed as a literal instead
-  of a `secrets.*` reference? **A newly logged secret is the #1 finding here.**
-- **Untrusted code running with secrets.** The classic exfiltration hole, by provider:
-  GitHub Actions `pull_request_target` (runs with repo secrets against **fork PR code**)
-  and `permissions:` set to blanket `write-all`; GitLab CI secrets not marked
-  *Protected* so they reach fork/branch pipelines; CircleCI "pass secrets to forked
-  PRs". Also: does any step interpolate an attacker-controlled value —
-  `${{ github.event.pull_request.title }}`, a branch name — straight into a `run:`
-  block? That's shell injection into a privileged runner.
-- **Infra-as-code blast radius.** For Terraform/Helm/k8s: does the change
-  **replace** rather than update a resource (a rename usually means destroy+create),
-  widen a security group / IAM policy / bucket ACL, or drop a `prevent_destroy`?
-  Is there a plan output in the PR to read, or are you guessing?
-- **Env var changes.** New required env var — is it documented, defaulted, and set in
-  every environment (local `.env.example`, CI, prod)? A new required var missing in one
-  env breaks that env silently. Renamed var — all readers updated?
-- **Trigger / matrix changes.** Did the workflow trigger change (e.g. now runs on every
-  push vs PR)? Matrix change drop a platform/version that was providing coverage?
-- **Pinning / supply chain.** Actions pinned to a SHA or a floating `@v3`/`@main`
-  (mutable — supply-chain risk)? Base image pinned to a digest or a floating tag?
-- **Caching & concurrency.** Cache key correctness (stale cache poisoning), and
-  `concurrency:` to cancel superseded runs.
-- **Cost / time.** Did a change make CI run much more (matrix blow-up, lost cache,
-  removed path filter)?
+The report is a map of the pipeline and the runtime **after** this change — what runs,
+where, with what credentials. State each as a fact at a `file:line`.
+
+- **Where secrets now flow.** Every secret/token/key the change touches, and where it
+  ends up: a `secrets.*` reference, echoed in a step, written to logs, passed as a
+  build-arg (baked into image layers), interpolated into a `run:` block that prints it,
+  or committed as a literal. Say which.
+- **What the triggers admit, and with what.** `pull_request_target` runs **fork PR
+  code** with repo secrets; `permissions: write-all` hands the token everything; GitLab
+  CI secrets not marked *Protected* reach fork/branch pipelines; CircleCI has a "pass
+  secrets to forked PRs" toggle. Say which combination this config now has. Same for
+  interpolation: if a step drops `${{ github.event.pull_request.title }}` or a branch
+  name into a `run:` block, that value reaches the runner's shell — say so.
+- **Infra-as-code reach.** For Terraform/Helm/k8s: does the change **replace** rather
+  than update a resource (a rename usually means destroy+create), change a security
+  group / IAM policy / bucket ACL, or remove a `prevent_destroy`? Is there a plan output
+  in the PR to read, or are you inferring? Say which you did.
+- **Env var changes.** For a new required var, name every place it is set (local
+  `.env.example`, CI, prod) *and* every place it isn't — that list is the blast radius.
+  For a renamed var, which readers the diff updated.
+- **Trigger / matrix changes.** What the workflow now runs on (every push vs PR), and
+  what the matrix covers now versus before — name the platforms/versions that entered or
+  left the set.
+- **Pinning.** Actions and base images pinned to a SHA/digest, or a floating
+  `@v3`/`@main`/`:latest` — a floating ref means the code that runs can change without
+  a diff. Say which each one is.
+- **Caching & concurrency.** What the cache key covers now, and whether `concurrency:`
+  cancels superseded runs.
+- **Cost / time.** How much more (or less) CI runs after this: matrix size, cache hits,
+  path filters.
 
 ## Blast radius
 
@@ -49,21 +53,11 @@ not the app code.
 Usually none. For a multi-job pipeline change, a small **flowchart of the job graph**
 (triggers → jobs → dependencies) before/after can be worth it. Otherwise skip.
 
-## Standing checks (config)
-
-- No secret echoed, logged, or baked into an image layer / build-arg?
-- Third-party actions & base images pinned (SHA/digest), not floating tags?
-- No untrusted code (fork PR) running with secrets; job permissions least-privilege?
-- No attacker-controlled value interpolated into a shell step?
-- New/renamed env var set + documented across ALL environments?
-- No accidental trigger widening or lost coverage in a matrix change?
-- (IaC) No resource replacement or widened IAM/network rule hiding in the plan?
-
 ## Verify these (config)
 
 - "Step at `file:line` — verify the secret isn't printed to logs or passed where it's
   echoed."
 - "New env var `X` at `file:line` — verify it's set in prod + CI + `.env.example`, not
   just locally."
-- "Action `@v3` at `file:line` — verify it's pinned to a SHA; a floating tag is a
-  supply-chain risk."
+- "Action `@v3` at `file:line` is a floating tag, not a SHA — verify you want the code
+  it runs to be able to change without a diff here."

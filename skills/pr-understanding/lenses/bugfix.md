@@ -1,20 +1,22 @@
 # Lens: Bugfix
 
 Fires when the title/body says fix and the change is small and targeted on existing
-logic. The reviewer's job is not "does this code run" but three sharper questions:
-**(1) what was the root cause, (2) does this actually address it or just the symptom,
-(3) is there a regression test so it stays fixed.**
+logic. A bugfix map answers three things the diff alone doesn't: **(1) what the failing
+behavior was, (2) what the fix changes in the mechanism, (3) what now exercises that
+path.**
 
 ## Reconstruct the bug from the diff
 
 - **What was the failing behavior?** State it from the diff + PR body. If the body
-  doesn't say, the fix is un-reviewable — make that the first verify item.
-- **Root cause vs symptom.** Does the change fix the *cause* or paper over a *symptom*?
-  A null-check added at the crash site when the real bug is upstream (why was it null?)
-  is a symptom fix — it moves the crash, doesn't remove it. Trace one level up: where
-  did the bad value originate?
-- **Scope of the fix.** Is the same buggy pattern present elsewhere? A fix at one call
-  site when three sites share the bug fixes 1/3. Grep for the pattern.
+  doesn't say, say that — a fix whose bug is never described is a map with a hole in it,
+  and it makes a good first verify item.
+- **Where the fix sits relative to the cause.** Trace one level up: where did the bad
+  value originate, and does the change touch that origin or the place the failure
+  surfaced? A null-check at the crash site and a fix at the source are different changes
+  with different reach — say which one this is, and let the reader draw the conclusion.
+- **Reach of the fix.** Grep for the same pattern elsewhere. If three call sites share
+  the shape and the diff changes one, the other two are blast-radius facts that never
+  appear in the patch — name them at a `file:line`.
 
 ## The one-character trap (read the fix char by char)
 
@@ -26,8 +28,8 @@ moved in or out of a loop body, an early return added before a side effect.
 
 **Language-specific one-character traps:**
 - **JS/TS** — `||`→`??` (now `0`/`""`/`false` no longer fall through — often *is* the
-  fix, or a *new* bug if `0` was a valid "unset"); `==`↔`===`; added/removed `await`
-  (a race fix, or a new one); `?.` swallowing an error that should throw.
+  fix; say which values behave differently now); `==`↔`===`; added/removed `await`
+  (changes the ordering, in either direction); `?.` swallowing a throw.
 - **Python** — `is`↔`==` (identity vs equality — works for small ints, then doesn't);
   a mutable default arg; `except:` widened or narrowed; a missing `await` on a coroutine
   (silently never runs).
@@ -40,22 +42,24 @@ moved in or out of a loop body, an early return added before a side effect.
 - **SQL** — `WHERE` predicate on a nullable column (`!= 'x'` excludes `NULL` rows),
   `JOIN`↔`LEFT JOIN`, an added `DISTINCT` masking a duplicate-rows bug upstream.
 
-## Regression test — did it get locked in?
+## What now exercises the fixed path
 
-- Is there a **new/changed test** that **fails before, passes after**? A bugfix without
-  a test will regress. If none, that's the top finding.
-- Does the test assert the **root-cause behavior**, or just re-assert the happy path?
+Report the test surface as a fact, not a grade — whether the coverage is *enough* is the
+reviewer's rail, not this one.
+
+- **Which test touches the fixed path**, new or existing, at a `file:line`. If the diff
+  adds none, the enumeration says that by itself.
 - **Was a test added and then removed?** Check the commit list (Step 1), not the net
   diff — add-then-delete nets to zero and is invisible in `gh pr diff`. If it happened,
-  quote the removing commit's message and check whether the body still claims coverage.
-- **Prove the coverage claim rather than reading it.** Revert the fix and run the test
-  the PR points at. A test that still passes with the fix reverted is not guarding it —
-  and that is a finding, not a footnote.
+  quote the removing commit's message; that is the author's own reasoning, and it is
+  rarely written down anywhere else.
+- **If the body claims coverage, name the test it means** (hard rule 4, quote the claim)
+  so the reader can check the claim against the file rather than take it on trust.
 
 ## Blast radius
 
-Small, but: who else calls the changed function? Could the fix's behavior change break
-a caller that *relied on* the old (buggy) behavior? (Bugs get depended on.)
+Small, but: who else calls the changed function, and does any caller depend on the old
+behavior? (Bugs get depended on.) Name them — the reader decides what it means.
 
 ## Diagram
 
@@ -63,18 +67,10 @@ Often none. If the bug is a **control-flow / ordering / state-machine** issue, a
 **before/after flowchart or stateDiagram** of the buggy vs fixed path is high-value —
 it shows exactly which edge changed. For a race, a **sequenceDiagram** old vs new.
 
-## Standing checks (bugfix)
-
-- Root cause addressed, not just the symptom? (trace one level upstream)
-- Same bug pattern absent elsewhere (grep)?
-- Regression test added that fails-before / passes-after?
-- No caller depended on the old (buggy) behavior?
-- Any behavior-flipping micro-edit fully understood?
-
 ## Verify these (bugfix)
 
-- "Fix at `file:line` — verify it addresses the root cause; where did the bad value
-  originate (one level up)?"
+- "The fix at `file:line` sits at the crash site; the bad value comes from `file:line`
+  one level up — verify that's where you want it handled."
 - "`||`→`??` at `file:line` — verify `0`/`""` was not a valid value that now behaves
   differently."
 - "Verify a test at `file:line` fails on the pre-fix code — else the bug can silently

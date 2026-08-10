@@ -21,10 +21,10 @@ to *see* goes here; everything they need to *know* goes in another section. Conc
 
 Nothing else. In particular:
 
-- A paragraph opening *"Two things a designer should look at…"* is a **finding**. It goes
-  under `## Findings`.
-- A sentence about hardcoded colors or a token mismatch is a **standing check**. It goes
-  in that row, at a `file:line`.
+- A paragraph opening *"Two things a designer should look at…"* is not a picture. If it
+  survives the litmus test (hard rule 1) it belongs under `## What's non-obvious`.
+- A sentence about which token a colour now resolves to belongs in the style-delta
+  table below, at a `file:line`, where it is a number the reader can check.
 - A paragraph narrating the restructure — *"the old `actionBar` was the footer; it has
   been split, a new `fixedFooter` inherits the padding and becomes the flex parent"* — is
   precisely what the picture is FOR. If you are writing that sentence, you have not drawn
@@ -37,7 +37,7 @@ anywhere in this skill, and it is the *easiest* one to fall into, because descri
 layout is much less work than reconstructing it.
 
 **Describe the evidence in the reader's words; never cite a tier number** (see hard rule
-5 — the ladder below is this skill's machinery, not something the reader knows about):
+6 — the ladder below is this skill's machinery, not something the reader knows about):
 
 > *No screenshots in the PR body and no preview build, so the panels below are rebuilt
 > from the diff — not captures.*
@@ -53,11 +53,12 @@ artifact out of the diff itself, so "no screenshots" is almost never "nothing to
 If you reach the bottom with genuinely nothing, the lens misfired — a view file changed,
 but only its data path, no visual property and no structure. **Do not emit an empty
 section saying so:** a `## Visual preview` that reads "no visual evidence available"
-implies a visual change went unexamined. Drop the section and put the finding in one
-`## Standing checks` row instead, where it is still falsifiable and costs a line rather
-than a heading:
+implies a visual change went unexamined. Drop the section and state the fact in one line
+of `## What this changes` instead, where it is still falsifiable and costs a sentence
+rather than a heading:
 
-| Any user-visible change? | **No** | the `*.tsx` edits are all in the data path — `useFeed.ts:40-58`; no style prop, layout or route touched |
+> No user-visible change: the `*.tsx` edits are all in the data path
+> (`useFeed.ts:40-58`) — no style prop, layout or route touched.
 
 **Embed images as plain markdown** (`render.py` sizes them to the column) inside a
 two-column table so before and after sit side by side:
@@ -162,7 +163,7 @@ two-column table so before and after sit side by side:
    disappear?"** Build the table that answers it — one row per user-visible control, from
    the base tree, not from the new one:
 
-   | Control | Was (`base:file:line`) | Now | Verdict |
+   | Control | Was (`base:file:line`) | Now | Change |
    |---|---|---|---|
    | Rest timer | `SettingsScreen.tsx:198` | Settings → Workout & devices | moved |
    | Rate app | `SettingsScreen.tsx:567` | Profile → Help & support | **left Settings** |
@@ -172,15 +173,25 @@ two-column table so before and after sit side by side:
    **Enumerate from the base tree so a dropped control cannot be invisible** — walking
    the new screens only shows you what survived. Reconcile the counts and state them
    ("31 controls on `main`, 31 placed"). A *reachability* change — still present, but now
-   two taps deeper or gone from where users look for it — is a finding even when nothing
-   was deleted; grep for every entry point to the new destination and say how many there
-   are. The old→new **screen map** (see `## Diagram`) is this change's architecture
+   two taps deeper, or reachable only from somewhere the user wasn't looking — is worth
+   stating even when nothing was deleted: grep for every entry point to the new
+   destination and say how many there are. The old→new **screen map** (see `## Diagram`)
+   is this change's architecture
    diagram, so it goes in `## What this changes` with the rest of them — the inventory
    table stays here.
 
    Prose is not a substitute here. *"An audit mapped every pre-existing control to a live
    new location, zero dropped"* is exactly the 90%-right claim the skill exists to
    prevent — the reader cannot check it. The table, they can.
+
+## Blast radius
+
+- **Shared components.** Is the changed component rendered anywhere else? List the
+  screens that render it — a metric-size tweak on a shared card changes every feed that
+  uses it, and not one of those files appears in the diff.
+- **Reachability (structural changes).** For every surface that moved, count its entry
+  points by grepping for navigations to the new route, and state the number next to what
+  the base tree had. That count is exactly what the reader cannot get from the patch.
 
 ## Diagram
 
@@ -196,42 +207,19 @@ somewhere new, and one that leaves a screen entirely is a missing edge — both 
 a diagram in a way they never jump out of a file list. This is the architecture diagram,
 so it belongs in `## What this changes`, not in `## Visual preview`.
 
-## Standing checks (visual)
-
-- **Dark mode / theme:** do changed colors use theme tokens, or are any hardcoded
-  (`#fff`, `rgb(...)`) so they break in the other theme? `file:line`. Per stack: a
-  missing `dark:` variant (Tailwind), a literal instead of a CSS custom property, a
-  raw `Color.white` instead of a semantic/asset color (SwiftUI), a bypassed
-  `MaterialTheme.colorScheme` (Compose), a hardcoded `Colors.white` (Flutter).
-- **Accessibility:** contrast still adequate (WCAG AA = 4.5:1 for body text)? Touch
-  target big enough — **≥44pt iOS, ≥48dp Android, ≥24px WCAG 2.2 for web**? Label
-  preserved on changed controls (`accessibilityLabel`, `aria-label`,
-  `contentDescription`, `Semantics`)? Is a colour the *only* thing signalling state?
-- **Responsive / dynamic type:** hardcoded px/pt where the design should scale? Does the
-  layout survive the largest Dynamic Type / browser zoom to 200% / longest i18n string?
-  On web, does it hold at a narrow breakpoint — and did the change touch only one
-  breakpoint's rules?
-- **RTL:** any new `left`/`right` (vs `start`/`end`, or `ms-`/`me-` in Tailwind,
-  `leading`/`trailing` in SwiftUI) that breaks RTL?
-- **Motion:** new animation or transition — does it respect
-  `prefers-reduced-motion` / Reduce Motion?
-- **Regression surface:** is the changed component shared? List other screens that
-  render it (blast radius) — a metric-size tweak on a shared card changes every feed.
-- **Reachability (structural changes):** does every surface that moved still have an
-  entry point, and how many? Count them by grepping for navigations to the new route. A
-  screen with exactly one door, where it used to have two, is a finding.
-
 ## Verify these (visual)
 
 - "Claims only the headline metric size changed — verify no sibling text
   (`file:line`) inherited the new size."
 - "The style delta shows `X`→`Y` at `file:line` — is that the intended design value,
   or an off-by-token guess?"
+- "The new colour at `file:line` is a literal (`#fff`), not a theme token — the preview
+  shows one theme, so check the other one yourself."
 - Whenever the preview is a mock: "The panels are drawn from `file:line`, not captured —
   the CTA is a 36pt disc above the button row. Run the screen once and confirm the real
   thing matches before approving."
-- If no preview was attainable: "No visual evidence — do not approve on the diff
-  alone; request a screenshot."
+- If no preview was attainable: "No visual evidence — the diff does not show what this
+  looks like; request a screenshot or run the screen."
 - Structural: "The inventory places all N controls, but *Rate app* now lives only under
   Help & support (`HelpSupportEntry.tsx:20` is its one entry point) — confirm you want it
   gone from Settings."

@@ -1,9 +1,10 @@
 # Lens: Refactor / no-behavior-change
 
 Fires on renames, moves, de-exports, extractions, type-only edits — where the author
-**claims no behavior change**. The entire value of this lens is **proving that claim,
-or catching where it's false.** A "pure refactor" that quietly changes behavior is the
-most dangerous PR shape, because reviewers relax exactly when they shouldn't.
+**claims no behavior change**. The value of this lens is **separating the mechanical
+churn from the handful of lines that could actually behave differently**, and handing
+the reader that short list. A thousand-line diff where nine lines are semantic is a
+diff nobody reads closely; nine lines, they read.
 
 ## Strategy: shrink the diff to the part that isn't noise
 
@@ -18,7 +19,11 @@ most dangerous PR shape, because reviewers relax exactly when they shouldn't.
    condition, an order of operations, a default, a signature, a visibility. **Only the
    semantic part can change behavior — that's what you read.**
 
-## Where "pure" refactors leak behavior — check each
+## Where "pure" refactors carry behavior — read each, and report what you find
+
+These are the mechanisms by which a move changes what the code does. Where one is
+present in the diff, the delta *is* part of what the change does — state it plainly at a
+`file:line` and let the reader weigh it.
 
 - **Extracted function drops a closure variable** or captures a different one — or in
   Go/Java, captures a **loop variable** whose binding differs from the original.
@@ -42,24 +47,16 @@ most dangerous PR shape, because reviewers relax exactly when they shouldn't.
 
 ## Blast radius
 
-For every moved/renamed/de-exported symbol: **every import site updated?** Grep the
-old name/path across the repo — a stale import is a build break the diff hides. Tests
-that imported the old path?
+For every moved/renamed/de-exported symbol: **which import sites did the diff update,
+and are there any left?** Grep the old name/path across the repo, including tests,
+string-based DI, and reflection/dynamic lookups — a site the patch never touched is
+exactly what the reader cannot see.
 
 ## Diagram
 
 Usually **none** (nothing flows differently). If the refactor reorganizes module
 boundaries, a small **before/after module graph** (flowchart) showing what now imports
 what earns its place. Otherwise skip.
-
-## Standing checks (refactor)
-
-- Every moved/renamed/visibility-narrowed symbol's import sites updated? (grep old
-  name → 0 hits, including tests, string-based DI, and reflection/dynamic lookups)
-- No equality/nullish operator, default argument, or condition changed under the move?
-- Extracted functions capture the same variables and run side effects in the same order?
-- Public API surface identical (or the change is called out, not silent)?
-- Tests still import valid paths and still exercise the moved code?
 
 ## Verify these (refactor)
 

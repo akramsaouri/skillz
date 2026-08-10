@@ -14,14 +14,16 @@ inferring and make it a verify item.
 
 ## Read the DDL for these, in order
 
-1. **Reversibility.** Is there a down/rollback? Does the down actually **reverse** the
-   up (drop what was added, restore what was dropped/renamed), or is it a stub /
-   `-- irreversible`? A `DROP COLUMN` with no down is data loss on rollback — flag it.
-2. **Destructive ops.** `DROP`, `TRUNCATE`, `ALTER … DROP`, `RENAME` (renames break
-   in-flight deploys reading the old name), type narrowing (`text`→`varchar(n)`),
-   `NOT NULL` on an existing column without a default/backfill.
-3. **Locking / blocking.** On a big table these stall prod — flag each with the safe
-   alternative.
+1. **Reversibility.** Is there a down/rollback, and what does it restore? A down that
+   recreates a dropped column recreates it *empty* — say so; a stub or
+   `-- irreversible` means the change is one-way once it runs. That is a property of
+   the migration the reader needs, whether or not it was deliberate.
+2. **Destructive ops.** `DROP`, `TRUNCATE`, `ALTER … DROP`, `RENAME` (in-flight deploys
+   still reading the old name stop finding it), type narrowing (`text`→`varchar(n)`),
+   `NOT NULL` on an existing column without a default/backfill (fails on existing rows).
+   Name each one and what it does to data that is already there.
+3. **Locking / blocking.** Say which statements take a lock and what they block while
+   they run — this is what the deploy actually does to prod, and the DSL hides it.
    - **Postgres:** `ALTER TABLE … ADD COLUMN … DEFAULT` (rewrites the table pre-PG11),
      `CREATE INDEX` **without `CONCURRENTLY`** (locks writes), `ALTER … SET NOT NULL`
      (full scan — prefer a `NOT VALID` check constraint then `VALIDATE`),
@@ -41,28 +43,29 @@ inferring and make it a verify item.
    - **DB-enforced (Postgres RLS — Supabase, Hasura, PostgREST, RDS):** is
      `ENABLE ROW LEVEL SECURITY` present *and* are policies defined? Enabling RLS with
      no policy denies all; a new table with **no RLS at all** is readable by any
-     authenticated client through an auto-generated API. If a function/RPC changed, does
-     it still check the caller (`auth.uid()`), and is it `SECURITY DEFINER` (which
-     **bypasses** RLS — the sharpest edge here)?
+     authenticated client through an auto-generated API. If a function/RPC changed, say
+     whether it checks the caller (`auth.uid()`) and whether it is `SECURITY DEFINER`
+     (which **bypasses** RLS, so its own checks are the only ones that run).
    - **App-enforced (Rails, Django, Laravel, most Node/Go services):** the DB is open,
      so scoping lives in a default scope, base queryset, or middleware. Does the new
-     table's model inherit it, or does it start unscoped? A missing `tenant_id` on the
-     table makes correct scoping impossible later.
+     table's model inherit it, or does it start unscoped? Whether the table carries a
+     `tenant_id` column at all decides what scoping is available later — say which.
    - Either way: is the new column/table exposed by an auto-generated API, GraphQL
      schema, or admin panel that enumerates models (Django admin, ActiveAdmin)?
-6. **Ordering / collisions.** Two PRs open at once each add a migration; whichever
-   merges second may be ordered *before* the first on a fresh DB. Check the migrations
-   dir for a **duplicate or out-of-order timestamp/number prefix**, a Django migration
-   whose `dependencies` point at a now-superseded leaf (two leaf nodes = broken graph),
-   or a Rails `schema.rb`/`structure.sql` whose version doesn't match the newest
-   migration. And is the migration **idempotent** (`IF NOT EXISTS`) where a partial
-   failure means it re-runs?
-7. **Enum/constraint changes.** Adding an enum value is fine; **removing/renaming** one
-   breaks rows using it. `CHECK` constraints validated against existing data?
+6. **Where it lands in the sequence.** Two PRs open at once each add a migration, and
+   whichever merges second may still be ordered *before* the first on a fresh DB. Say
+   where this one sits: its timestamp/number prefix against the newest on the base, the
+   `dependencies` leaf it points at (Django), the `schema.rb`/`structure.sql` version it
+   was generated from (Rails). Note whether it is written to be re-runnable
+   (`IF NOT EXISTS`) — that decides what a partial failure leaves behind.
+7. **Enum/constraint changes.** Adding an enum value is additive; **removing/renaming**
+   one changes what existing rows using it mean. A new `CHECK` runs against data that is
+   already there — say what it would reject.
 
 ## App-code sync (blast radius)
 
-A schema change with no matching app change is a red flag. Grep for:
+Where a schema change has no matching app change, the app is still speaking the old
+shape — that is reach the patch does not show. Grep for:
 - Every read/write of the changed table/column in app code, **plus the checked-in
   artifact that mirrors the schema** — is it regenerated in this PR? By stack:
   `database.types.ts` (Supabase), `schema.prisma` + Prisma client, `schema.rb` /
@@ -74,27 +77,16 @@ A schema change with no matching app change is a red flag. Grep for:
 List any use site the diff did NOT update.
 
 **Deploy ordering.** Old app code runs against the new schema during a rolling deploy
-(and new code against the old schema if the migration lags). Is this change
-**backward-compatible for one deploy cycle**, or does it require expand→migrate→contract
-across two PRs? A `DROP`/`RENAME` shipped with its app change in one PR is the common
-break.
+(and new code against the old schema if the migration lags). Say which of the two
+versions this schema can serve: only the new one, or both for a cycle. A `DROP`/`RENAME`
+shipped in the same PR as its app change is the shape where that answer is "only the new
+one" — the reader is the one who decides whether to split it expand→migrate→contract.
 
 ## Diagram
 
 **`erDiagram` before → after** (two diagrams or one with the delta marked): tables,
 the changed columns, and FK relationships. If it changes a write path, add a tiny
 sequence diagram of app → RPC → table.
-
-## Standing checks (migration)
-
-- Down-migration reverses the up? (`file:line`)
-- No table-rewrite or non-concurrent index build locking a large table?
-- Tenancy enforced for the new table — DB policy or app-level scope, named and cited?
-- Non-null column added via nullable→backfill→not-null, not in one locking step?
-- Schema-mirroring artifact (types/`schema.rb`/client) regenerated, and raw-SQL call
-  sites updated?
-- Backward-compatible for one rolling-deploy cycle, or split expand→contract?
-- Migration prefix/dependency graph does not collide with another open migration?
 
 ## Verify these (migration)
 
@@ -107,3 +99,10 @@ sequence diagram of app → RPC → table.
   authenticated caller can read every row."
 - "`DROP`/`RENAME` at `file:line` ships with its app change — verify old pods running
   mid-deploy don't still read the old name."
+- "The non-null column at `file:line` is added in one statement — verify table X is
+  small enough for that, or that you want the nullable→backfill→not-null split."
+- "`database.types.ts` / `schema.rb` / the generated client was not regenerated in this
+  PR — verify it doesn't need to be, and grep the old column name as a bare string for
+  raw-SQL call sites the ORM rename never touched."
+- "This migration's prefix is `<n>` — verify it still orders after whatever merged to
+  the base while the PR was open."

@@ -5,65 +5,56 @@ Fires on new screens/routes/endpoints/files that introduce behavior. This is the
 architecture diagram, and the widest verify list all apply. The lens adds the questions
 specific to *new* code paths.
 
-## What new code needs that changed code doesn't
+## What new code needs mapping that changed code doesn't
+
+New code has no "before" to diff against, so the map is an **inventory of the new
+surface**. Enumerate it; the enumeration itself shows the reader what is and isn't there.
 
 - **Every state of the new flow.** Loading, empty, error, success, offline, permission-
-  denied. A feature PR that only handles the happy path is the most common gap — list
-  which states are handled (`file:line`) and which are **missing**.
-- **Entry & exit.** How is the new flow reached (route, button, deep link) and how is
-  it left (back, cancel, completion)? Is there a dead end — a screen you can enter but
-  not leave, or navigation that doesn't reset?
-- **New external calls.** Every new network/DB/RPC call: timeout? error path? retry?
-  loading indicator? What happens on failure — silent, toast, blocking?
-- **New state / data ownership.** Where does the new state live (local, store, server)?
-  Who invalidates it? Any stale-cache risk?
-- **Auth / gating.** Is the new screen/endpoint behind the right auth? Can an
-  unauthorized user reach it by deep link or direct call?
-- **Analytics / feature flag.** Is the feature behind a flag (safe rollout) or shipped
-  hot? Are the expected events instrumented (if the repo has that convention)?
+  denied — list the ones it renders and cite each (`file:line`). A list of three where
+  the reader expected six tells them more than any adjective would.
+- **Entry & exit.** How the new flow is reached (route, button, deep link) and how it is
+  left (back, cancel, completion). Name every door in and every door out.
+- **New external calls.** Every new network/DB/RPC call, and what the code does around
+  it: timeout, retry, loading indicator, and what the user sees on failure — silent,
+  toast, blocking.
+- **New state / data ownership.** Where the new state lives (local, store, server), and
+  what invalidates it.
+- **Auth / gating.** What gates the new screen/endpoint, cited — and which of the entry
+  points above that gate actually sits behind.
+- **Analytics / feature flag.** Is the feature behind a flag or shipped hot? Which events
+  it instruments (if the repo has that convention).
 
 **If the new surface is a UI flow**, the states above are the whole game. **If it's an
 API, endpoint, job, or consumer**, swap in these:
-- **Input validation at the boundary** — is the request body/params parsed by a schema
-  (zod, pydantic, serializer, struct tags), or trusted? Is authorization checked per
-  *resource*, not just "is logged in"? (IDOR: can I pass someone else's id?)
-- **Idempotency & retries** — can this be called twice (client retry, at-least-once
-  queue) without double-charging or duplicating a row? Is there an idempotency key or a
-  unique constraint backing it?
-- **Unbounded work** — a list endpoint without pagination or a cap, a query without a
-  `LIMIT`, an N+1 across the new relation, an unbounded fan-out to a downstream service.
-- **Failure semantics** — is the write transactional across all the rows it touches?
-  What's left behind if the process dies halfway? Is a background job's failure visible
-  (dead-letter, alert) or silent?
-- **Rate limiting & cost** — is the new endpoint rate-limited, and does it call a paid
-  or slow third party per request?
+- **Boundary handling** — is the request body/params parsed by a schema (zod, pydantic,
+  serializer, struct tags) or read straight off the request? Where authorization is
+  checked, is it per *resource* or per session? Say which; both are real designs.
+- **Call-twice semantics** — what happens on a client retry or an at-least-once
+  redelivery: is there an idempotency key or unique constraint, or does it write again?
+- **Bounds** — pagination or a cap on the new list endpoint, a `LIMIT` on the new query,
+  the number of round-trips across the new relation, the fan-out to downstream services.
+- **Failure semantics** — is the write transactional across the rows it touches, what is
+  left behind if the process dies halfway, and where a background job's failure surfaces
+  (dead-letter, alert, nowhere).
+- **Rate limiting & cost** — what the new endpoint calls per request (paid or slow third
+  parties), and whether it is rate-limited.
 
 ## Blast radius (full fan-out)
 
 All four Deep-lane subagents. Plus feature-specific:
-- Does the new flow **reuse** existing components/hooks/utils, or **duplicate** logic
-  that already exists? (Point to the existing one — duplication is debt.)
-- Does it register routes/deep links/notification handlers that need to be added
-  elsewhere (a central navigator, an intent filter)?
+- Does the new flow **reuse** existing components/hooks/utils, or **reimplement** logic
+  that already exists somewhere? Point to both, with `file:line` — two implementations
+  of the same thing is a fact about the codebase the reader should know it now has.
+- Does it register routes/deep links/notification handlers that reach into shared
+  registries elsewhere (a central navigator, an intent filter)?
 
 ## Diagram
 
 **Lead with architecture** — a component/boundary flowchart of the new flow: entry →
 screens → data sources → exit, marking which nodes are new vs existing. Then, if a
-request/RPC path carries the risk, a **sequenceDiagram** of the new call. When it
+request/RPC path carries the weight, a **sequenceDiagram** of the new call. When it
 modifies an existing flow, show **old vs new**.
-
-## Standing checks (feature)
-
-- (UI) All states handled (loading/empty/error/success/offline)? Which are missing?
-- Every new external call has a timeout + error path?
-- New screen/endpoint behind correct auth — including deep-link reachability and
-  per-resource ownership, not just "authenticated"?
-- (API) Input validated at the boundary; the write idempotent under retry?
-- (API) Nothing unbounded — pagination, `LIMIT`, no N+1 on the new relation?
-- New logic reuses existing utils rather than duplicating?
-- Behind a feature flag, or justified to ship hot?
-- (repo convention) Analytics events instrumented?
 
 ## Verify these (feature)
 
@@ -72,7 +63,7 @@ modifies an existing flow, show **old vs new**.
 - "New endpoint `file:line` — verify auth gating; can a deep link reach it unauthed?"
 - "`file:line` looks up the record by an id from the request — verify it also checks the
   caller *owns* it, or any authenticated user can pass someone else's id."
-- "The write at `file:line` isn't idempotent — verify a client retry or queue redelivery
-  can't create a second row / second charge."
+- "The write at `file:line` has no idempotency key or unique constraint behind it —
+  verify a client retry or queue redelivery writing twice is acceptable here."
 - "Claims this is net-new — verify `X` at `file:line` isn't duplicating the existing
   `Y` at `file:line`."

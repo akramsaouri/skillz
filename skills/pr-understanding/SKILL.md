@@ -17,7 +17,7 @@ Say plainly what the change is — then make every part of that claim checkable.
 **Altitude — lead with the shape, land on the load-bearing detail.** Work
 *architecture-first*: what moved, which boundaries it crosses (client↔edge↔DB↔
 storage, module↔module, screen↔navigator), what the new control/data flow is, and
-where the risk concentrates. Drill into a specific `file:line` **only when it
+where the change's weight lands. Drill into a specific `file:line` **only when it
 carries weight** — a security re-check, an invariant, a behavioral edge, a
 one-character change that flips behavior. A citation is the *evidence* for a
 load-bearing claim, not a line-by-line tour. Every bullet either establishes the
@@ -26,27 +26,38 @@ cut it or fold it into a collapsed `<details>` block.
 
 ## Hard rules
 
-1. **Every claim is falsifiable and located.** Cite `file:line`. If you cannot
+1. **Explain the change; never critique it.** This skill draws a map, not a verdict.
+   What the change does, what moved, which boundaries it crosses, what follows from it,
+   what history explains the present state, what it touches outside the diff — all in.
+   Whether it is *wrong, risky, missing something, or badly done* — out, along with any
+   hunt for a bug class the diff didn't raise. The litmus test: **would this observation
+   still be worth writing if the PR were perfect?** If yes it is explanation and belongs
+   here; if it exists only because something might be wrong, it is critique and does not.
+   Defect-hunting is a **separate rail's** job — `/code-review` fields finder and
+   verifier agents, confidence verdicts, quoted counter-evidence and cross-finder dedup,
+   none of which this skill has. Doing it badly here costs the budget that should go to
+   making the change legible.
+2. **Every claim is falsifiable and located.** Cite `file:line`. If you cannot
    point to it, do not assert it.
-2. **Explain the change plainly, but never vaguely.** "This PR refactors the auth layer
+3. **Explain the change plainly, but never vaguely.** "This PR refactors the auth layer
    to improve maintainability" is banned — it is unfalsifiable and says nothing. "The
    1200-line `SettingsScreen` becomes a 4-category hub plus 4 sub-screens
    (`Navigation.tsx:384-389`)" is required. The test is not *"is this prose?"* but
    *"can the reader prove me wrong from the code?"*
-3. **Quote the PR body before arguing with it.** Never write "the PR body claims X"
-   without the author's actual words at first mention. The reader must be able to compare
-   claim against reality without leaving the page.
-4. **Never hand-write an identity line.** Author, state, link, dates, churn and branches
-   are rendered from `--meta` (Step 9). A `PR #631 — branch → main · +2789/−1784` line in
+4. **Quote the PR body before comparing it to the code.** Never write "the PR body
+   claims X" without the author's actual words at first mention. The reader must be able
+   to compare claim against reality without leaving the page.
+5. **Never hand-write an identity line.** Author, state, link, dates, churn and branches
+   are rendered from `--meta` (Step 8). A `PR #631 — branch → main · +2789/−1784` line in
    the markdown double-renders.
-5. **Never mention the skill's own machinery in the report body.** No lanes, no tier
+6. **Never mention the skill's own machinery in the report body.** No lanes, no tier
    numbers, no step numbers, no notes about which section was tuned — the reader wants a
    map of their PR, not a description of how it was made.
    The line is **provenance, not vocabulary**: calling the change a bugfix or a migration
    is plain English and fine; tagging a row `(bugfix)` to mark which lens supplied the
    check is machinery and is not. If a phrase would puzzle someone who has never heard of
    this skill, cut it.
-   The one exception is the header: `--triage` (Step 9) prints the lane and lens as chips,
+   The one exception is the header: `--triage` (Step 8) prints the lane and lens as chips,
    deliberately, so the routing stays falsifiable. That is chrome, not the markdown.
 
 ## Step 1 — Acquire the change (net diff + commit list + a tree to read)
@@ -126,22 +137,24 @@ Size is measured on **meaningful** churn, not raw `+/-`. **Exclude** from the co
 - **Vendored deps** and **pure moves/renames** (`git diff -M -C --stat` tells you which).
 
 A `pod install` lockfile bump must not fake "large". Note the excluded files — the
-*Reading order* section lists them under "Ignore". **Excluded ≠ unexamined:** a
-generated file that *should* have changed and didn't is a finding (see the Migration
-and Dependency lenses), and a snapshot baseline that changed is evidence about intent.
+*Reading order* section lists them under "Ignore". **Excluded ≠ unexamined:** whether a
+generated artifact tracks the source change is part of what the change *does* — if the
+schema moved and the generated client did not, the running code still sees the old shape,
+and that is worth a line (see the Migration and Dependency lenses). A snapshot baseline
+that changed is evidence about intent.
 
 ### Axis 1 — SIZE → lane (how much machinery)
 
 | Lane | Trigger (on meaningful churn) | What changes vs Standard |
 |---|---|---|
 | **Fast** | ≤~3 meaningful files, single concern, low blast radius (no exported-signature / schema / auth / money change) | **Skip the parallel fan-out** (do a quick inline caller/test check instead). ≤1 diagram (skip if the flow is unchanged). 2–3 verify items. Still renders. |
-| **Standard** | a normal PR | The full Steps 3–8 below, inline (fan out only if blast radius looks non-trivial). |
+| **Standard** | a normal PR | The full Steps 3–7 below, inline (fan out only if blast radius looks non-trivial). |
 | **Deep** | ≥~10 meaningful files, OR crosses a boundary (client↔edge↔DB, new native module), OR high blast radius, OR touches migrations / auth / money | **Full parallel fan-out** (Step 5), old-vs-new diagrams, extra scrutiny, more verify items. |
 
 When unsure between two lanes, pick the **larger** — under-reading a big PR is the
 expensive mistake.
 
-### Axis 2 — SCOPE → lens (which questions, diagram, checks, sections)
+### Axis 2 — SCOPE → lens (which questions, which diagram, which sections)
 
 Match the PR against the lenses below. **A PR may get one primary lens + secondary
 lenses** (a feature that adds a migration is Feature × Migration). For each matched
@@ -161,7 +174,7 @@ If **nothing** matches cleanly, treat it as **Feature/Standard** and note the
 ambiguity as the first *verify* item.
 
 **Record the routing decision as a one-line `·`-separated string** — it is passed to
-`--triage` in Step 9 and renders as header chips, so the user can falsify the triage
+`--triage` in Step 8 and renders as header chips, so the user can falsify the triage
 itself without it occupying the top of the report:
 > Deep lane · Feature × Migration lens · 14 meaningful files (3 lockfile/snapshot ignored)
 
@@ -185,15 +198,16 @@ answer:
 > from Settings at all — only from Profile → Help & support
 > (`components/Profile/HelpSupportEntry.tsx:20` is the sole entry point). Intended?
 
-The callout **states the question; `## Findings` carries the evidence.** Overlap with
-your first finding is expected and fine — restate it in one or two sentences here and
-develop it there. Do not move the evidence up, and do not cross-reference by section
-name; the reader is two screens away from it.
+The callout **states the question; `## What's non-obvious` carries the evidence.**
+Overlap with the first entry there is expected and fine — restate it in one or two
+sentences here and develop it there. Do not move the evidence up, and do not
+cross-reference by section name; the reader is two screens away from it.
 
 Pick the callout by asking *"if the reviewer merges this without reading further, what
-would I regret not having told them?"* — an unstated behavior change, a false claim in
-the description, a silently widened blast radius. If the PR is genuinely clean, say so
-outright; a callout that manufactures alarm is worse than none.
+would I regret not having told them?"* — a behavior change the description doesn't
+mention, a claim in the description the code doesn't bear out, a reach wider than the
+title suggests. When the change holds no such question, say so outright; a callout that
+manufactures alarm is worse than none.
 
 **The architecture diagram (Step 6) belongs in this section** — it is the visual form of
 *what* and *how*. Do not give it its own heading.
@@ -225,33 +239,36 @@ single message so they run concurrently (whatever your harness calls the tool). 
 returns a compact `file:line` bullet list, no prose:
 
 - **Callers** — for every exported/changed function, symbol, endpoint or RPC, who
-  calls it, and are the call sites compatible with the new signature/behavior?
-- **Tests** — which existing tests exercise the changed paths; are any now stale,
-  missing, or newly required?
+  calls it, and which of those call sites the diff updated.
+- **Tests** — which existing tests exercise the changed paths, and which of them the
+  diff touched.
 - **Type & schema usage** — every use site of changed types/interfaces/DB
-  columns/API shapes; flag any the diff did NOT update.
+  columns/API shapes, marking which the diff updated and which it did not.
 - **Config / env / migration touch points** — new env vars, flags, migrations, or
   generated code this change implies.
 
 **Standard lane →** fan out only if blast radius looks non-trivial; otherwise a quick
 inline grep for callers + tests of the changed symbols is enough.
 
-**Fast lane →** skip the fan-out; one inline check that the changed symbol's callers
-and tests are compatible.
+**Fast lane →** skip the fan-out; one inline look at who calls the changed symbol and
+what covers it.
 
-Merge into one **Blast Radius** section. Anything found that the diff did NOT touch is a
-candidate risk — highlight it. (Lenses add their own blast-radius targets, e.g. the
-Dependency lens greps the changelog for breaking changes, not the repo.)
+Merge into one **Blast radius** section. This section is a *map of reach*, not an
+assessment: a use site the diff did NOT touch is the most useful thing here — the reader
+will never see it in the patch — so name it, cite it, and say plainly that this change
+reaches it. Stop there. Whether that is a problem is the reader's call to make, and the
+reviewer's rail to argue. (Lenses add their own blast-radius targets, e.g. the Dependency
+lens greps the changelog for breaking changes, not the repo.)
 
 ## Step 6 — Diagram the CHANGED flow (Mermaid)
 
 **Lead with architecture.** The first diagram shows the change at the level of
 *components and boundaries* — the modules/services/layers touched and how data crosses
 between them. **It goes inside `## What this changes`** (Step 3), where it does the most
-work. Only THEN, if a specific mechanism carries the risk, add a second, tighter diagram
-— and put that one beside the finding it explains, not in a section of its own. **The
-matched lens's `## Diagram` section picks the type — follow it.** Skip the diagram
-entirely on the Fast lane when the flow is unchanged.
+work. Only THEN, if a specific mechanism carries the weight, add a second, tighter
+diagram — and put that one beside the observation it explains, not in a section of its
+own. **The matched lens's `## Diagram` section picks the type — follow it.** Skip the
+diagram entirely on the Fast lane when the flow is unchanged.
 
 Pick the detail type from the change shape:
 - Request / RPC / API / event path → **sequenceDiagram**.
@@ -271,47 +288,7 @@ point — keep the source parseable:
   hazard is **`;`** — it silently truncates the message. Use a **comma** instead.
 - Keep `file:line` citations OUT of diagram labels. Cite in surrounding prose.
 
-## Step 7 — Standing checks (repo-aware invariants)
-
-Run the checks that are load-bearing for THIS diff. **This is the highest-leverage
-part of the skill.** Answer each with a `file:line`.
-
-Ceiling: **6 rows** (Deep: 8). A check that is "N/A" for this PR is not a row — drop
-it. Prefer one check you can falsify at a `file:line` over three you answer "N-A".
-
-Derive the check-set in this order:
-1. The repo's own stated rules — CLAUDE.md / AGENTS.md / CONTRIBUTING, a lint or CI
-   config. Cite where you got it.
-2. The matched lens's `## Standing checks (…)` section.
-3. The defaults below, only where the stack makes them apply.
-
-The lists below are a **menu, not a checklist** — pick the few that bite on this diff.
-
-Cross-stack, applied only when relevant:
-- Auth/tenancy: do new DB reads/writes stay scoped to the current user/tenant — and is
-  ownership checked per *resource*, not just "authenticated"?
-- Money: amounts still in minor units — no float, no major-unit leak?
-- Time: stored UTC, formatted local only at the edge? Any DST-naive date math?
-- External calls: any new call without a timeout or error path?
-- Secrets: any token, key or PII newly logged?
-- Concurrency: new shared mutable state without a lock, or a failure swallowed by an
-  unawaited task / unhandled rejection / bare `go` routine?
-- Boundary input: request data parsed by a schema, or trusted?
-
-Stack-specific, when the stack matches:
-- **React / React Native** — hook called conditionally or in a loop / `.map()`; hook
-  COUNT stable across renders? Effect missing a cleanup or a dependency?
-- **Swift / Kotlin** — main-thread blocking, retained `self`, lifecycle-unsafe capture?
-- **Python / Django** — N+1 (missing `select_related`/`prefetch_related`), mutable
-  default arg, blocking I/O inside an async view?
-- **Rails** — N+1 (missing `includes`), mass assignment via unpermitted params, a
-  callback with a side effect firing on every save?
-- **Go** — `err` dropped, missing `defer` close, goroutine leak, context not propagated?
-- **Node backend** — unhandled rejection, missing `await`, sync fs/crypto on the hot path?
-- **SQL-heavy** — new query without an index on the filtered column; predicate on a
-  nullable column silently excluding `NULL` rows?
-
-## Step 8 — "Verify these"
+## Step 7 — "Verify these"
 
 Restate the PR's implicit claims as **falsifiable questions the user checks against
 the code** — count scales with the lane (Fast 2–3, Deep 5–7+), and **the lens's
@@ -319,10 +296,15 @@ the code** — count scales with the lane (Fast 2–3, Deep 5–7+), and **the l
 > "Claims the retry only fires on 5xx — verify at `api/client.ts:88` that a 4xx
 > falls through without retrying."
 
+**A verify item asks; it does not accuse** (hard rule 1). "Verify the down-migration
+restores the data" is a question you are handing the reader. "The down-migration is
+broken" is a verdict you are not entitled to and did not test — write the first, never
+the second, even when you suspect the second.
+
 Do not skip **trivial-looking edits that change behavior**: `||`→`??`, `===`→`==`, an
 added `await`, a flipped default, a removed `!`. A one-character diff can be the whole PR.
 
-## Step 9 — Render (and re-render on every revision)
+## Step 8 — Render (and re-render on every revision)
 
 ### The skeleton is fixed — same H2s, same order, every PR
 
@@ -335,21 +317,29 @@ others at H2:
 | 1 | `## What this changes` | Step 3 (+ the architecture diagram) | always |
 | 2 | `## Visual preview` | `lenses/visual.md` | Visual lens fires **and** it yields something to show |
 | 3 | `## Reading order` | Step 4 | always |
-| 4 | `## Findings` | your analysis | when there is something to report |
+| 4 | `## What's non-obvious` | your analysis | when there is something to report |
 | 5 | `## Blast radius` | Step 5 | always |
-| 6 | `## Standing checks` | Step 7 | always |
-| 7 | `## Verify these` | Step 8 | always |
+| 6 | `## Verify these` | Step 7 | always |
 
-**All findings live under the single `## Findings` H2**, one `###` each. The `###` is
-where narrative headings belong — *"The regression test was added, then deleted, and the
-PR body still claims it exists"* is a good `###` and a terrible H2. Mechanism-level
-diagrams sit inside the `###` or the Blast radius subsection they illustrate, never as
-their own section.
+**`## What's non-obvious` holds the observations that change the reader's model of the
+change** — a consequence the diff does not show on its face (a prop that silently
+discards a memoization), history that explains a surprising present state (three call
+sites never got the newer helper because it was written after they were migrated), a
+count the reader would otherwise have to assemble by hand. It is emphatically **not** a
+defect list (hard rule 1): no verdict on quality, no "this is risky", no judgement about
+whether the tests are adequate, no *"verified clean"*. Apply the litmus test to every
+entry before it goes in. A PR that holds no surprises simply omits the section.
+
+**All such entries live under that single H2**, one `###` each. The `###` is where
+narrative headings belong — *"Three lists lost their no-recycling opt-out, because the
+replacement was invented after they were migrated"* is a good `###` and a terrible H2.
+Mechanism-level diagrams sit inside the `###` or the Blast radius subsection they
+illustrate, never as their own section.
 
 **A lens file's own `##` headings are instructions to you, not report sections.** Only
 `## Visual preview` comes out of a lens as a section; everything else a lens tells you to
-produce folds into the seven above — its standing checks into `## Standing checks`, its
-verify items into `## Verify these`, its analysis into `## Findings` or `## Blast radius`.
+produce folds into the six above — its verify items into `## Verify these`, its reach
+into `## Blast radius`, the rest into `## What's non-obvious` or the opening section.
 
 Fenced ```mermaid for diagrams, deep-but-skippable content in
 `<details><summary>…</summary>`. Then render and open it:

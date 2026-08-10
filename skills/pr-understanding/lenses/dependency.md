@@ -49,28 +49,20 @@ report `file:line` hits. "The changelog says `X` was removed in v5 — we call `
   Android: `pod install`, `./gradlew clean`, a new Xcode. Python: a wheel that now
   compiles from source. Go: `go mod tidy` (is `go.sum` complete?). Rust: an MSRV bump.
   Java/Kotlin: a Gradle plugin or JDK target bump. If the manifest moved but the
-  lockfile didn't (or vice versa), CI and local will drift — flag it.
+  lockfile didn't (or vice versa), CI and local resolve to different versions — say so.
 - **New min runtime / language version?** Check it against what CI, Docker base images,
   and the deploy target actually run — a bump that needs Node 22 or Python 3.12 fails
   at deploy, not in review.
 - **New install-time script** (`postinstall`, `setup.py`, `build.rs`, Gradle plugin)?
   That's arbitrary code on every developer machine and CI runner — supply-chain surface.
 - **Package identity**: did the package get renamed, change owner/namespace, or is this
-  a fork swapped in at the same import path? Rare, but the highest-severity finding here.
+  a fork swapped in at the same import path? Rare, and it changes what is actually being
+  installed behind an unchanged import — worth a line whenever it happens.
 
 ## Diagram
 
 **Usually none.** A dependency bump has no changed flow. Skip it unless the new version
 changes an API contract we consume, in which case a tiny before/after of that one call.
-
-## Standing checks (dependency)
-
-- Manifest and lockfile both updated and consistent (no drift)?
-- Any listed breaking change hits a repo call site? (list them)
-- Rebuild/regeneration step required and reflected in the lockfile?
-- Min runtime / peer-dep requirement still satisfied by CI, Docker base, and deploy target?
-- New install-time script or changed package ownership?
-- Is this a security patch (then prioritize) or a feature bump (then justify)?
 
 ## Verify these (dependency)
 
