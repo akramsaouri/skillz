@@ -63,9 +63,12 @@ behavior? (Bugs get depended on.) Name them — the reader decides what it means
 
 ## Diagram
 
-Often none. If the bug is a **control-flow / ordering / state-machine** issue, a small
-**before/after flowchart or stateDiagram** of the buggy vs fixed path is high-value —
-it shows exactly which edge changed. For a race, a **sequenceDiagram** old vs new.
+Often none. If the bug is a **control-flow / ordering / state-machine** issue, a short
+**`.rail`** of the buggy path against the fixed one is high-value — pair the steps so the
+one that changed is the only row wearing `is-gone` / `is-new`, and the reader sees the
+defect without being told where to look. For a **race or a mis-ordered call chain**, a
+**`.ladder`** of the sequence; put the hop that fires too early — or the one whose error
+went unhandled — in an `.lnote` beside it. Markup contract in Step 6.
 
 ## Verify these (bugfix)
 

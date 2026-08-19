@@ -260,33 +260,121 @@ reaches it. Stop there. Whether that is a problem is the reader's call to make, 
 reviewer's rail to argue. (Lenses add their own blast-radius targets, e.g. the Dependency
 lens greps the changelog for breaking changes, not the repo.)
 
-## Step 6 — Diagram the CHANGED flow (Mermaid)
+## Step 6 — Diagram the CHANGED flow (components, not Mermaid)
 
 **Lead with architecture.** The first diagram shows the change at the level of
 *components and boundaries* — the modules/services/layers touched and how data crosses
 between them. **It goes inside `## What this changes`** (Step 3), where it does the most
 work. Only THEN, if a specific mechanism carries the weight, add a second, tighter
 diagram — and put that one beside the observation it explains, not in a section of its
-own. **The matched lens's `## Diagram` section picks the type — follow it.** Skip the
-diagram entirely on the Fast lane when the flow is unchanged.
+own. **The matched lens's `## Diagram` section picks the component — follow it.** Skip
+the diagram entirely on the Fast lane when the flow is unchanged.
 
-Pick the detail type from the change shape:
-- Request / RPC / API / event path → **sequenceDiagram**.
-- Branching logic, lifecycle, status machine → **flowchart** / **stateDiagram-v2**.
-- Data-model / relationship change → **erDiagram** or a small **classDiagram**.
+**Why these are HTML and not Mermaid.** Mermaid sizes its SVG to the widest row, so on a
+phone the figure can only scroll sideways — the reader sees a third of the diagram at a
+time, which is the same as seeing none of it. Across 24 real renders, 30 of 46 diagrams
+came out oversized, and nearly all of them were *linear or layered* rather than
+topological: a sequence of calls, a before-and-after, a stack of components. None of
+those shapes need a graph-layout engine. So the renderer ships CSS for three reflowing
+HTML components you write **directly into the markdown** — raw HTML passes straight
+through, exactly like the existing `.pv`/`.mock` UI mocks — and each collapses to a
+single readable column on a narrow screen.
+
+### Pick the component from the shape
+
+| The change looks like… | Use | Replaces |
+|---|---|---|
+| Old path vs new path, step for step | **`.rail`** | the two-subgraph old-vs-new flowchart |
+| A call / request / event sequence, or any linear flow | **`.ladder`** | `sequenceDiagram`, linear `flowchart` |
+| Components or layers and what crosses between them | **`.layers`** | `flowchart LR` component map |
+| A data model — tables, columns, relationships | ` ```mermaid ` **`erDiagram`** | — (kept) |
+| Genuine fan-out/fan-in: a node with **3+ inbound AND 3+ outbound** edges | ` ```mermaid ` **`flowchart`** | — (kept) |
+
+Mermaid still renders — it is just no longer the default. Keep it for the last two rows
+only, where the topology *is* the content. The test for fan-out is mechanical, not a
+feeling: count the edges on the busiest node, and if it does not have 3+ on both sides,
+the figure has a linear or layered reading and belongs in a component.
 
 When behavior changes, show **old path vs new path**. Depict *this change*, not the
 whole system.
 
-**Mermaid hygiene — a diagram that fails to parse is worse than no diagram.** The
-renderer degrades a broken diagram to a source block, but a rendered diagram is the
-point — keep the source parseable:
-- **flowchart / stateDiagram / class / ER — quote every node and edge label:**
-  `A["text"]`, `D{"choice?"}`, `X -->|"label"| Y`. Quoting neutralizes `(){}[]`, `:`,
-  `<`/`>`, `#`, `"`, and a leading `-`. When in doubt, quote.
-- **sequenceDiagram messages — do NOT quote** (quotes render literally). The one real
-  hazard is **`;`** — it silently truncates the message. Use a **comma** instead.
-- Keep `file:line` citations OUT of diagram labels. Cite in surrounding prose.
+### 1. `.rail` — aligned before/after diff
+
+The most common shape. Rows are authored as **pairs** so the two sides stay level: two
+columns at ≥40rem, stacked below that, where each step auto-labels itself "Before" /
+"After" via CSS.
+
+```html
+<div class="rail">
+  <div class="rail-heads"><div>Before</div><div>After</div></div>
+  <div class="rail-row">
+    <div class="rail-step">Client taps <code>Save</code></div>
+    <div class="rail-step">Client taps <code>Save</code></div>
+  </div>
+  <div class="rail-row">
+    <div class="rail-step is-gone">Phone computes <code>nextDueAt</code> from local clock</div>
+    <div class="rail-step is-new">Postgres computes <code>next_due_at</code> in the RPC</div>
+  </div>
+</div>
+```
+
+- Mark changed steps **`is-gone`** (red, left border) and **`is-new`** (green). An
+  unchanged step carries no modifier and sits level with its counterpart — that levelness
+  is what makes the diff readable, so keep the pairs aligned.
+- **One-sided step** (added with no predecessor, or removed with no replacement): still
+  emit both cells, leaving the absent side an empty `<div class="rail-step">`.
+- Relabel the columns with `--rail-before` / `--rail-after` on `.rail` — string values:
+  `<div class="rail" style="--rail-before:'iOS'; --rail-after:'Android'">`. `.rail-heads`
+  is desktop-only (hidden below 40rem); keep its two labels in sync if you override.
+
+### 2. `.ladder` — numbered call sequence
+
+```html
+<ol class="ladder">
+  <li class="lstep"><span class="lfrom">WorkoutTracker</span><span class="lmsg">completeSet(setId)</span><span class="lto">useWorkoutStore</span></li>
+  <li class="lstep"><span class="lfrom">useWorkoutStore</span><span class="lmsg">rpc('complete_set_with_progression_metadata')</span><span class="lto">Supabase</span></li>
+  <li class="lstep is-return"><span class="lfrom">Supabase</span><span class="lmsg">{ set, progression }</span><span class="lto">useWorkoutStore</span></li>
+  <li class="lnote">A PostgrestError here was previously swallowed by the truthiness check.</li>
+</ol>
+```
+
+- `.lstep` is one hop. Step numbers come from a CSS counter — **never number them by
+  hand**. The arrows around `.lmsg` are drawn by CSS — **never type `->`**.
+- `.lstep.is-return` for a response hop (dashed, quieter). `.lnote` for an aside row.
+
+### 3. `.layers` — component stack
+
+```html
+<div class="layers">
+  <div class="layer"><div class="layer-name">Screen</div><div class="layer-nodes"><span class="node">SettingsScreen</span><span class="node is-new">UnitPrefRow</span></div></div>
+  <div class="cross">unit: 'kg' | 'lb'</div>
+  <div class="layer"><div class="layer-name">State</div><div class="layer-nodes"><span class="node">usePreferenceStore</span><span class="node is-gone">legacyUnitCtx</span></div></div>
+</div>
+```
+
+- Each band is a `.layer` (what used to be a subgraph); nodes inside it are wrapping
+  `.node` chips, which also take **`is-new`** (green) and **`is-gone`** (dashed, struck
+  through).
+- A crossing between bands is a labelled `.cross` row carrying what moves across it. CSS
+  draws the ↓ — **never type an arrow glyph**.
+
+### Authoring rules
+
+- **The class names are exact and renderer-owned.** `render.py` styles these and nothing
+  else; a misspelled class renders as unstyled text. Do not invent siblings.
+- **No inline `style`** except the `--rail-before` / `--rail-after` overrides. **No inline
+  colors** at all — `is-new` / `is-gone` carry the meaning and stay legible in both themes.
+- Keep the content short: chips and steps are phrases, not sentences. Long labels reflow,
+  but a wall of text in a `.rail-step` defeats the side-by-side read.
+- Keep `file:line` citations OUT of the components. Cite in the surrounding prose.
+
+**Mermaid hygiene, for the two cases you keep it** — a diagram that fails to parse is
+worse than no diagram. The renderer degrades a broken one to a source block, but a
+rendered diagram is the point:
+- **erDiagram / flowchart — quote every node and edge label:** `A["text"]`,
+  `D{"choice?"}`, `X -->|"label"| Y`. Quoting neutralizes `(){}[]`, `:`, `<`/`>`, `#`,
+  `"`, and a leading `-`. When in doubt, quote.
+- Keep `file:line` citations OUT of diagram labels here too.
 
 ## Step 7 — "Verify these"
 
@@ -341,7 +429,8 @@ illustrate, never as their own section.
 produce folds into the six above — its verify items into `## Verify these`, its reach
 into `## Blast radius`, the rest into `## What's non-obvious` or the opening section.
 
-Fenced ```mermaid for diagrams, deep-but-skippable content in
+Diagrams are the raw-HTML components of Step 6 (fenced ```mermaid only for `erDiagram`
+and true fan-out/fan-in); deep-but-skippable content goes in
 `<details><summary>…</summary>`. Then render and open it:
 
 ```bash

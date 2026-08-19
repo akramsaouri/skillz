@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
-"""Render a Markdown report (with ```mermaid blocks) to a readable, OS-theme-aware
-HTML page and open it in the browser. Zero dependencies (Python stdlib only).
+"""Render a Markdown PR report to a readable, OS-theme-aware HTML page and open
+it in the browser. Zero dependencies (Python stdlib only).
+
+The report body is Markdown plus a small set of raw-HTML components this file
+owns and styles: UI mocks (.pv/.mock) and three reflowing diagram structures --
+.rail (aligned before/after diff), .ladder (numbered call sequence) and .layers
+(component stack). They replace the Mermaid flowcharts and sequence diagrams
+that could not fit a phone: Mermaid sizes an SVG to its widest row, so those
+figures could only scroll sideways. All three reflow to a single column instead.
+```mermaid blocks are still supported and still rendered -- keep them for
+erDiagram and genuine fan-out/fan-in, where the topology is the point.
 
 Usage:
     python3 render.py [--title TITLE] [--meta JSON|PATH] [--triage STR] [--out PATH]
@@ -294,6 +303,153 @@ TEMPLATE = r"""<!doctype html>
   .mock .ph { height: .55rem; border-radius: 999px; background: var(--border-soft); }
   .mock .is-new { outline: 2px solid var(--ok); outline-offset: 3px; }
   .mock .is-gone { outline: 2px dashed var(--danger); outline-offset: 3px; opacity: .55; }
+
+  /* ---- reflowing diagram components -------------------------------------
+     Three structures the skill authors directly in the markdown, replacing the
+     Mermaid shapes that could not fit a phone: an aligned before/after diff
+     (.rail), a numbered call sequence (.ladder), and a component stack
+     (.layers). Same contract as the UI mocks above -- this file owns the
+     semantics and the styling, the author writes small semantic markup. All
+     three reflow to a single column and never scroll sideways. Mermaid is kept
+     only for erDiagram and genuine fan-out/fan-in. ------------------------- */
+
+  /* 1. before/after rail.
+     Rows are authored as PAIRS (one .rail-row holding the two sides) rather
+     than one list per side, so the two sides stay level by construction with
+     no subgrid and no equal-height hack. It also stacks better: on a phone a
+     "was -> now" pair stays together instead of forcing a scroll between two
+     long columns. Side labels are generated per step below the breakpoint,
+     where the shared heads row stops meaning anything. */
+  .rail {
+    --rail-before: "Before";
+    --rail-after: "After";
+    display: flex; flex-direction: column; gap: .5rem;
+    margin: 1.6rem 0; padding: 1rem;
+    background: var(--figure-bg); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow);
+  }
+  .rail-heads { display: none; }
+  .rail-row { display: grid; grid-template-columns: 1fr; gap: .5rem; }
+  .rail-step {
+    min-width: 0; overflow-wrap: anywhere;
+    background: var(--surface); border: 1px solid var(--border);
+    border-left: 3px solid var(--border);
+    border-radius: 10px; padding: .55rem .7rem;
+    font-size: .85rem; line-height: 1.45;
+  }
+  .rail-row > .rail-step::before {
+    display: block; font-size: .62rem; font-weight: 700;
+    letter-spacing: .08em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: .2rem;
+  }
+  .rail-row > .rail-step:first-child::before { content: var(--rail-before); }
+  .rail-row > .rail-step:nth-child(2)::before { content: var(--rail-after); }
+  .rail-step.is-gone {
+    border-left-color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 7%, var(--surface));
+  }
+  .rail-step.is-new {
+    border-left-color: var(--ok);
+    background: color-mix(in srgb, var(--ok) 8%, var(--surface));
+  }
+  @media (min-width: 40rem) {
+    .rail-heads {
+      display: grid; grid-template-columns: 1fr 1fr; gap: .75rem;
+      padding: 0 .7rem;
+      font-size: .64rem; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .rail-row { grid-template-columns: 1fr 1fr; gap: .75rem; }
+    .rail-row > .rail-step::before { content: none; }
+  }
+
+  /* 2. flow ladder. One numbered step per row: source chip -> message ->
+     target chip. Every part wraps and the chips carry overflow-wrap, so a long
+     identifier breaks instead of widening the row. */
+  .ladder {
+    counter-reset: lstep; list-style: none;
+    display: flex; flex-direction: column; gap: .5rem;
+    margin: 1.6rem 0; padding: 1rem;
+    background: var(--figure-bg); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow);
+  }
+  .lstep {
+    counter-increment: lstep; list-style: none;
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem .45rem;
+    min-width: 0;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: .55rem .7rem;
+    font-size: .85rem; line-height: 1.5;
+  }
+  .lstep::before {
+    content: counter(lstep);
+    flex: 0 0 auto; align-self: flex-start;
+    min-width: 1.35rem; height: 1.35rem;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: .68rem; font-weight: 700;
+    color: var(--muted); background: var(--code-bg);
+    border: 1px solid var(--border-soft); border-radius: 999px;
+  }
+  .lfrom, .lto {
+    flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere;
+    font-family: var(--mono); font-size: .74rem;
+    padding: .12rem .4rem; border-radius: 6px;
+    background: var(--code-bg); color: var(--code-text);
+    border: 1px solid var(--border-soft);
+  }
+  .lmsg { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
+  .lmsg::before { content: "\2192\00a0"; color: var(--muted); }
+  .lmsg::after { content: "\00a0\2192"; color: var(--muted); }
+  /* a response hop: same from/to ordering, drawn quieter than a call */
+  .lstep.is-return { border-style: dashed; background: var(--figure-bg); }
+  .lstep.is-return .lmsg { color: var(--muted); }
+  .lnote {
+    list-style: none; min-width: 0; overflow-wrap: anywhere;
+    font-size: .78rem; line-height: 1.5; color: var(--muted);
+    padding: 0 .7rem 0 2.15rem;
+  }
+  .lnote::before { content: "\21b3\00a0"; }
+
+  /* 3. layer stack. Each former subgraph is a horizontal band, stacked top to
+     bottom, nodes as wrapping chips inside. A crossing between bands is a
+     labelled .cross row, so the whole figure is vertical by construction. */
+  .layers {
+    display: flex; flex-direction: column;
+    margin: 1.6rem 0; padding: 1rem;
+    background: var(--figure-bg); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow);
+  }
+  .layer {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: .6rem .7rem;
+  }
+  .layer-name {
+    font-size: .62rem; font-weight: 700; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: .4rem;
+  }
+  .layer-nodes { display: flex; flex-wrap: wrap; gap: .35rem; min-width: 0; }
+  .node {
+    min-width: 0; overflow-wrap: anywhere;
+    font-family: var(--mono); font-size: .74rem;
+    padding: .2rem .45rem; border-radius: 6px;
+    background: var(--code-bg); color: var(--code-text);
+    border: 1px solid var(--border-soft);
+  }
+  .node.is-new {
+    border-color: var(--ok); color: var(--ok);
+    background: color-mix(in srgb, var(--ok) 10%, var(--code-bg));
+  }
+  .node.is-gone {
+    border-style: dashed; border-color: var(--danger); color: var(--danger);
+    text-decoration: line-through; opacity: .8;
+  }
+  .cross {
+    align-self: center; text-align: center; max-width: 100%;
+    min-width: 0; overflow-wrap: anywhere;
+    padding: .3rem .5rem;
+    font-family: var(--mono); font-size: .72rem; color: var(--muted);
+  }
+  .cross::before { content: "\2193"; display: block; font-size: .95rem; line-height: 1.2; }
 
   /* ---- mermaid figures ---- */
   .mermaid-graph {

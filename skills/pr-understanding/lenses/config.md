@@ -50,8 +50,14 @@ where, with what credentials. State each as a fact at a `file:line`.
 
 ## Diagram
 
-Usually none. For a multi-job pipeline change, a small **flowchart of the job graph**
-(triggers → jobs → dependencies) before/after can be worth it. Otherwise skip.
+Usually none. For a multi-job pipeline change, a **`.rail`** of the job order before and
+after earns its place — one row per job, `is-new` on jobs the change adds, `is-gone` on
+ones it drops, and the reader can see at a glance whether the gate they rely on still
+runs. If the pipeline is better read as stages, a **`.layers`** works too: one `.layer`
+per stage (trigger → build → test → deploy), jobs as `.node` chips, and the artifact or
+condition passed downstream as the `.cross` label. Reach for Mermaid only if a job graph
+genuinely fans out — one job feeding 3+ others *and* fed by 3+. Otherwise skip. Markup
+contract in Step 6.
 
 ## Verify these (config)
 

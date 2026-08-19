@@ -51,10 +51,16 @@ All four Deep-lane subagents. Plus feature-specific:
 
 ## Diagram
 
-**Lead with architecture** — a component/boundary flowchart of the new flow: entry →
-screens → data sources → exit, marking which nodes are new vs existing. Then, if a
-request/RPC path carries the weight, a **sequenceDiagram** of the new call. When it
-modifies an existing flow, show **old vs new**.
+**Lead with architecture** — a **`.layers`** stack of the new flow: one `.layer` per
+boundary (entry → screen → state → data source), the components as `.node` chips with
+`is-new` on the ones this PR introduces, and what crosses between bands — the prop, the
+payload, the row shape — on the `.cross` row. The `is-new` chips are the point: they show
+how much of the flow is genuinely new versus wired out of parts that already existed.
+
+Then, if a request/RPC path carries the weight, a **`.ladder`** of the new call, with the
+response hop marked `is-return`. When the feature **modifies an existing flow** rather
+than adding one, a **`.rail`** of old against new says it faster than either. Markup
+contract in Step 6.
 
 ## Verify these (feature)
 

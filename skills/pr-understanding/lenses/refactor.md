@@ -55,8 +55,13 @@ exactly what the reader cannot see.
 ## Diagram
 
 Usually **none** (nothing flows differently). If the refactor reorganizes module
-boundaries, a small **before/after module graph** (flowchart) showing what now imports
-what earns its place. Otherwise skip.
+boundaries, a **`.layers`** stack of the new arrangement earns its place — one `.layer`
+per tier, modules as `.node` chips, `is-new` on what the refactor introduced and
+`is-gone` on what it dissolved, with the import or dependency direction on the `.cross`
+row. Where the point is that a module changed tier rather than that a new tier exists, a
+**`.rail`** of old placement against new shows the move directly. Either way the figure
+must depict *structure*, not behavior: this lens's whole claim is that behavior did not
+change. Markup contract in Step 6.
 
 ## Verify these (refactor)
 
