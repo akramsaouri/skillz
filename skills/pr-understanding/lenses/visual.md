@@ -195,17 +195,23 @@ two-column table so before and after sit side by side:
 
 ## Diagram
 
-Usually **NOT a sequence diagram**. Prefer a small **component/layout tree** (flowchart)
-showing which components changed, OR skip the diagram and let the preview carry it — a
-mock or a screenshot already shows the layout, and a flowchart of the same boxes is
-duplicate work. Only draw a flow diagram if the PR also changes interaction (navigation,
-gesture, conditional render).
+Usually **NOT a call sequence**. Prefer a small **component/layout tree** as a
+**`.layers`** stack — one `.layer` per level of the tree (screen → section → leaf),
+components as `.node` chips with `is-new` / `is-gone` on the ones that changed — OR skip
+the diagram entirely and let the preview carry it. A mock or a screenshot already shows
+the layout, and a figure of the same boxes is duplicate work. Only draw a flow at all if
+the PR also changes interaction (navigation, gesture, conditional render); a **`.ladder`**
+covers that case — the diagram component from Step 6, no relation to the preview ladder
+above.
 
-For a structural change (tier 4), draw the **old→new screen map**: two subgraphs, screens
-as nodes, navigation as edges. A control that changes parent shows up as an edge landing
-somewhere new, and one that leaves a screen entirely is a missing edge — both jump out of
-a diagram in a way they never jump out of a file list. This is the architecture diagram,
-so it belongs in `## What this changes`, not in `## Visual preview`.
+For a structural change (tier 4), draw the **old→new screen map** as a **`.rail`**: one
+row per control or surface that moved, its old home on the left and its new home on the
+right. A control that changed parent reads as a pair whose two sides disagree, and one
+that left the app's reachable surface entirely is a row with an empty `is-new` cell —
+both jump out in a way they never jump out of a file list. This is the architecture
+diagram, so it belongs in `## What this changes`, not in `## Visual preview`. Markup
+contract in Step 6; it is the same raw-HTML-through-`marked` trick as the `.pv`/`.mock`
+previews above, so the two sit side by side without fighting.
 
 ## Verify these (visual)
 
