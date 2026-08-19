@@ -344,6 +344,14 @@ TEMPLATE = r"""<!doctype html>
   }
   .rail-row > .rail-step:first-child::before { content: var(--rail-before); }
   .rail-row > .rail-step:nth-child(2)::before { content: var(--rail-after); }
+  /* One-sided step (added with no predecessor, or removed with no replacement).
+     The empty cell is authored as a blank <div>, which in practice carries the
+     source newline -- so :empty does NOT match it and a whitespace-tolerant
+     marker class is the only reliable hook. .is-only collapses the row to one
+     full-width step instead of drawing a labelled empty box beside it. The JS
+     below tags whitespace-only cells so older maps get the same treatment. */
+  .rail-step.is-blank { display: none; }
+  .rail-row.is-only { grid-template-columns: 1fr; }
   .rail-step.is-gone {
     border-left-color: var(--danger);
     background: color-mix(in srgb, var(--danger) 7%, var(--surface));
@@ -360,6 +368,7 @@ TEMPLATE = r"""<!doctype html>
       text-transform: uppercase; color: var(--muted);
     }
     .rail-row { grid-template-columns: 1fr 1fr; gap: .75rem; }
+    .rail-row.is-only { grid-template-columns: 1fr; }
     .rail-row > .rail-step::before { content: none; }
   }
 
@@ -598,6 +607,17 @@ async function boot() {
 
   // Swap each ```mermaid code block for a placeholder that remembers its source,
   // so we can RE-render it whenever the OS theme flips.
+  // A one-sided rail row: mark the blank cell and narrow the row to one column.
+  // Text-content test, not :empty -- an authored blank <div> holds a newline.
+  el.querySelectorAll('.rail-row').forEach(row => {
+    const cells = [...row.children].filter(c => c.classList.contains('rail-step'));
+    const blanks = cells.filter(c => !c.textContent.trim() && !c.querySelector('img,svg'));
+    if (cells.length === 2 && blanks.length === 1) {
+      blanks[0].classList.add('is-blank');
+      row.classList.add('is-only');
+    }
+  });
+
   el.querySelectorAll('pre > code.language-mermaid').forEach((code, i) => {
     sources[i] = code.textContent;
     const holder = document.createElement('div');

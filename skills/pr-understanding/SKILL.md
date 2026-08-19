@@ -322,7 +322,11 @@ columns at ≥40rem, stacked below that, where each step auto-labels itself "Bef
   unchanged step carries no modifier and sits level with its counterpart — that levelness
   is what makes the diff readable, so keep the pairs aligned.
 - **One-sided step** (added with no predecessor, or removed with no replacement): still
-  emit both cells, leaving the absent side an empty `<div class="rail-step">`.
+  emit both cells, leaving the absent side an empty `<div class="rail-step"></div>`. The
+  renderer detects the blank cell, hides it, and collapses the row to one full-width step
+  — so a one-sided row reads as a single statement rather than a labelled empty box beside
+  a real one. Do not add the marker class yourself; `is-blank` / `is-only` are applied at
+  render time and are not part of the authoring vocabulary.
 - Relabel the columns with `--rail-before` / `--rail-after` on `.rail` — string values:
   `<div class="rail" style="--rail-before:'iOS'; --rail-after:'Android'">`. `.rail-heads`
   is desktop-only (hidden below 40rem); keep its two labels in sync if you override.
