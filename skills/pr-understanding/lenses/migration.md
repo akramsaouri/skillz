@@ -84,9 +84,17 @@ one" — the reader is the one who decides whether to split it expand→migrate�
 
 ## Diagram
 
-**`erDiagram` before → after** (two diagrams or one with the delta marked): tables,
-the changed columns, and FK relationships. If it changes a write path, add a tiny
-sequence diagram of app → RPC → table.
+**`erDiagram` before → after** (two diagrams or one with the delta marked): tables, the
+changed columns, and FK relationships. This is one of the two shapes that **stays
+Mermaid** — a schema is a topology, not a sequence, so keep the fenced ```mermaid block
+and the quoted-label hygiene from Step 6.
+
+If it changes a **write path**, add a **`.ladder`** for app → RPC → table, with the hop
+that now computes or validates something server-side marked as the step it is; a returned
+row is an `is-return` hop. If the migration **moves a responsibility** — a default that
+was applied in app code now enforced by the column, a timestamp the client used to
+compute — a **`.rail`** of old against new lands it harder than either diagram, because
+the reader sees which side of the boundary each step lives on now.
 
 ## Verify these (migration)
 
