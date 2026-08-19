@@ -397,7 +397,7 @@ TEMPLATE = r"""<!doctype html>
     background: var(--code-bg); color: var(--code-text);
     border: 1px solid var(--border-soft);
   }
-  .lmsg { flex: 1 1 11rem; min-width: 0; overflow-wrap: anywhere; }
+  .lmsg { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
   .lmsg::before { content: "\2192\00a0"; color: var(--muted); }
   .lmsg::after { content: "\00a0\2192"; color: var(--muted); }
   /* a response hop: same from/to ordering, drawn quieter than a call */
