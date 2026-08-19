@@ -62,7 +62,10 @@ report `file:line` hits. "The changelog says `X` was removed in v5 — we call `
 ## Diagram
 
 **Usually none.** A dependency bump has no changed flow. Skip it unless the new version
-changes an API contract we consume, in which case a tiny before/after of that one call.
+changes an API contract we consume — then a two-row **`.rail`** of that one call site,
+the old signature `is-gone` against the new one `is-new`, is the whole diagram. Keep it
+to the call that actually moved; a bump is not an excuse to draw the library. Markup
+contract in Step 6.
 
 ## Verify these (dependency)
 
