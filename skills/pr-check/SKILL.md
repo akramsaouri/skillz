@@ -3,9 +3,9 @@ name: pr-check
 description: >
   Check the user's understanding of a pull request at three depths: a
   3-question consequence quiz (graded with --grade), corrections to a
-  teach-back, or a Socratic drill, all pinned to the head SHA. Use when the user
+  teach-back, or a drill (a Socratic back-and-forth), all pinned to the head SHA. Use when the user
   wants to test, or prove, that they understand a PR.
-argument-hint: "<pr> [--depth quiz|teachback|socratic] [--grade]"
+argument-hint: "<pr> [--depth quiz|teachback|drill] [--grade]"
 ---
 
 # PR check
@@ -155,7 +155,9 @@ either covered by it or listed as missing.
 
 `kind` is `wrong|missing`; `claim` is `null` for `missing`.
 
-## Socratic: `--depth socratic`
+## Drill: `--depth drill`
+
+A Socratic back-and-forth. "Drill" is the name everywhere (flag, events, UI).
 
 Chat-only, and it emits no JSON block.
 

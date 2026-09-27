@@ -31,7 +31,7 @@ with one JSON block that the Lucidos Pulls app and review-prep rail read.
 | **[pr-intent](./skills/pr-intent/SKILL.md)** | On your PR, challenges the why you wrote against the diff. On someone else's, drafts a why with every guess tagged `[guess]` | 3 sentences + ≤5 mismatches |
 | **[pr-story](./skills/pr-story/SKILL.md)** | Reading order for the diff, plus one sequence diagram of the flow carrying the most change | 1 diagram + 1 line per step |
 | **[pr-behaviour](./skills/pr-behaviour/SKILL.md)** | What changes for users, before → after, with screenshots when a caller supplies them | ≤5 changes |
-| **[pr-check](./skills/pr-check/SKILL.md)** | Tests your understanding: a consequence quiz with grading, teach-back corrections, or a Socratic drill | 3 questions, ≤5 corrections |
+| **[pr-check](./skills/pr-check/SKILL.md)** | Tests your understanding: a consequence quiz with grading, teach-back corrections, or a drill (Socratic back-and-forth) | 3 questions, ≤5 corrections |
 | **[pr-recall](./skills/pr-recall/SKILL.md)** | Keeps one-line cards on how merged code works, and flags an open PR that undoes one | ≤3 cards per PR |
 
 Start with `/pr-lanes 971` and run what it points to, e.g. `/pr-check 971 --depth quiz`.
