@@ -5,7 +5,7 @@ description: >
   3-question consequence quiz (graded with --grade), corrections to a
   teach-back, or a drill (a Socratic back-and-forth), all pinned to the head SHA. Use when the user
   wants to test, or prove, that they understand a PR.
-argument-hint: "<pr> [--depth quiz|teachback|drill] [--grade] [--lanes <lanes.json>]"
+argument-hint: "<pr> [--depth quiz|teachback|drill] [--grade] [--lanes <lanes.json>] [--story <story.json>]"
 ---
 
 # PR check
@@ -82,11 +82,13 @@ did a second tap on Place order do while the first order was still saving?" Each
   diff left alone), never recall ("which file…", "what is the new function called");
 - covers a different part of the change, starting with the load-bearing one. On Sat's
   own PR, favour cases the diff doesn't show on its face;
-- asks nothing a pr-lanes reason states, before or after the PR: that card sits beside
-  the quiz. Read pr-lanes' JSON pinned to `$SHA` from earlier in this conversation
-  (Lucidos runs lanes → story → check in one session) or from `--lanes <file>`. With
-  none, never quiz the change a lane reason would name (the unmentioned change, the one
-  users see, the sensitive trigger); quiz its edges instead.
+- asks nothing a pr-lanes reason or a pr-story line (a step's `what`, an `Also:` line,
+  a diagram message) states, before or after the PR: those cards sit beside the quiz.
+  Read each JSON pinned to `$SHA` from earlier in this conversation (Lucidos runs lanes
+  → story → check in one session), or from `--lanes <file>` and `--story <file>`. With
+  no lanes, never quiz the change a lane reason would name (the unmentioned change, the
+  one users see, the sensitive trigger); quiz its edges instead. On Sat's own PR, it
+  also asks nothing the PR title states.
 
 Line: `<id> — <question>`. Print the pin, the 3 lines, then
 `Answer, then: /pr-check <n> --grade`. Keep the answers to yourself until grading.
