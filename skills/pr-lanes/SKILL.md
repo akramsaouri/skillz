@@ -69,7 +69,8 @@ git show "${SHA}:<path>"; git grep -n '<symbol>' "$SHA"   # read the head withou
 
 Run pr-recall's **Match** procedure (`<this-skill-dir>/../pr-recall/SKILL.md`, section
 "Match") on this PR. Keep at most 3 hits, ordered `no` → `unclear` → `yes`. No store,
-or no card overlaps: print `Recall: no matching cards`, the line Match prints too.
+or no card overlaps: print `Recall: no matching cards` after the pin, the line Match
+prints too, and emit `"recall": []`.
 
 `✗ decision · #812 — Streak days are computed server-side — useStreak.ts:41 recomputes them on the client`
 
@@ -79,32 +80,41 @@ or no card overlaps: print `Recall: no matching cards`, the line Match prints to
 
 Read these from the metadata and the diff. They are also the JSON `signals`.
 
-- **Trust-class files** (`ignored_files`) fire no lane: lockfiles, generated code,
-  vendored deps, pure renames, formatting, version bumps, config with no app logic;
-  docs, prose QA specs, specs that only move line numbers, translations, fixtures,
-  snapshots; agent prompts, skills and hooks (`CLAUDE.md`, `.claude/`, `.agents/`)
-  unless they change a gate: review, merge, auto-merge, release or a CI skip. A gate
-  change is meaningful: it fires `behaviour` and is sensitive `gate`.
-- **Meaningful files**: every other changed file. Only they fire lanes.
-- **Areas**: of the meaningful files. An area is the first path segment, or the first
-  two under `apps/`, `packages/`, `services/`, `libs/`, `src/`; a root file is `(root)`.
-  `components/Workout/Pill.tsx` → `components`, `apps/web/page.tsx` → `apps/web`.
+- **Trust-class files** fire no lane but remember (see its row); `ignored_files` counts
+  them. Lockfiles, generated code, vendored deps, pure renames, formatting, version
+  bumps, config with no app logic; docs and prose specs (markdown QA or design specs),
+  whatever they change; translations, fixtures, snapshots; agent prompts, skills and
+  hooks (`CLAUDE.md`, `.claude/`, `.agents/`) unless they change a gate: review, merge,
+  auto-merge, release or a CI skip. A gate change is meaningful: it fires `behaviour`
+  and is sensitive `gate`.
+- **Meaningful files** (`meaningful_files`): every other changed file. Only they fire
+  the other lanes. Tests (`*.test.*`, `*.spec.*`, `__tests__/`, `tests/`) are meaningful, but no
+  structure threshold counts them.
+- **Areas**: of the meaningful files other than tests. An area is the first path
+  segment, or the first two under `apps/`, `packages/`, `services/`, `libs/`, `src/`,
+  `.claude/`, `.agents/`; a skill is its own area (`.claude/skills/release`). Root
+  files are `(root)`, which counts for familiarity, never toward structure's ≥3.
 - **New abstractions**: symbols exported at `$SHA` and not at `$BASE` (types,
   functions, classes, components, hooks), plus new tables, RPCs, endpoints and jobs.
   Not unexported helpers, a new file as such, re-exports, tests, or a moved symbol.
 - **Author**: `own`, `other`, or `bot` (`dependabot`, `renovate`, a `[bot]` login).
-- **Ticket**: a closing issue, or a ticket key or URL in the title, body or branch
-  name; else `null`.
+- **Ticket**: a closing issue, or a tracker key (`PZ-88`, or a Sentry short ID such as
+  `APP-40`) or issue URL in the title, body or `headRefName`, any case; else `null`.
 - **Sensitive**: categories the meaningful lines alter, not just read, render or
-  memoize; UI, copy and styling never count. `auth` (sessions, tokens, permissions,
-  RLS), `money` (payments, prices, entitlements), `data` (deleting or migrating stored
-  data), `security` (secrets, access, input validation), `concurrency` (races, locks,
-  retries, ordering), `contract` (an API, schema or export existing callers rely on),
-  `gate` (review, merge, release, CI skip, in code or agent instructions).
-- **Familiarity**: how well Sat knew each area before this PR. Count Sat's commits from
-  `$BASE`, which leaves out this PR's own, one call per area with the area as one quoted
-  word (`(root)` is `':(top,glob)*'`), and keep the lowest count with its area:
-  `git log --since=1.year --author="$(git config user.email)" --format=%h "$BASE" -- 'widgets' | wc -l`
+  memoize; UI, copy and styling never count. `auth` (who may do what: sessions, tokens,
+  roles, permissions, grants, RLS), `money` (payments, prices, entitlements), `data`
+  (deleting or migrating stored data), `security` (what an attacker could reach:
+  secrets, sandboxing, input validation; a line that is also `auth` is `auth` only),
+  `concurrency` (races, locks, retries, ordering), `contract` (a breaking change to an
+  export, API or schema that callers outside this diff use: a removed name or field, a
+  changed signature, return shape or side effect; additive changes, and callers the diff
+  updates, don't count), `gate` (review, merge, release, CI skip, in code or agent
+  instructions).
+- **Familiarity**: how well Sat knew each area in the year before BASE's date (not
+  today's: re-runs must agree). Count Sat's commits from `$BASE`, which leaves out this
+  PR's own, one call per area with the area as one quoted word (`(root)` is
+  `':(top,glob)*'`), and keep the lowest count with its area:
+  `git log --since="$(git show -s --format=%cs "$BASE") 1 year ago" --author="$(git config user.email)" --format=%h "$BASE" -- 'widgets' | wc -l`
 
 ## Step 3 — Lanes
 
@@ -112,20 +122,20 @@ Test every lane against its trigger and tag each one that holds, in table order.
 
 | Lane | Fires when | Next |
 |---|---|---|
-| intent | the PR adds a capability (a new route, screen, endpoint, job, flag or public API), or does something its title and body never mention; a fix or refactor alone is not intent | `/pr-intent` |
-| structure | ≥3 areas, ≥10 meaningful files, ≥3 new abstractions, or a move or refactor at scale | `/pr-story` |
-| behaviour | a user can notice it (UI, copy, navigation, notifications, errors, public API or CLI output), or it changes a gate | `/pr-behaviour` |
-| understanding | `sensitive` is not empty, the least familiar area has ≤2 commits, or an export imported by ≥10 files at `$SHA` changes its signature, return shape or side effects | `/pr-check` |
-| remember | it sets a decision, invariant or convention later PRs will lean on, moves something people look for, or a recall hit reads `no` | `/pr-recall create` once merged |
+| intent | the PR adds a capability (a new route, screen, endpoint, job, flag or public API), or makes a capability, user-visible behaviour, gate or breaking contract change its title and body never mention. Internals never count: PR templates often keep them out of the body. A fix or refactor alone is not intent | `/pr-intent` |
+| structure | ≥3 areas besides `(root)`, ≥10 meaningful files besides tests, ≥3 new abstractions, or a move or refactor at scale | `/pr-story` |
+| behaviour | a user can notice it (UI, copy, navigation, notifications, errors the user sees, public API or CLI output), or it changes a gate | `/pr-behaviour` |
+| understanding | `sensitive` is not empty, or the least familiar area has ≤2 commits | `/pr-check` |
+| remember | a recall hit reads `no`, the PR reverses a rule the repo writes down (in `CLAUDE.md`, docs or a code comment), or it writes down a new rule for later code (always, never, only, must). A rule written into a Trust-class file fires this too; a decision that lives only in code does not | `/pr-recall create` once merged |
 | trust | there are no meaningful files: every change is Trust-class | none |
 
-- **trust is exclusive.** No meaningful files: print the trust line and no other lane,
-  whatever the Trust-class changes say. Any meaningful file: trust never fires.
+- **trust is exclusive.** No meaningful files: print the trust line and no other lane
+  but remember. Any meaningful file: trust never fires.
 - No lane holds: print `No lane: nothing here needs another pr-* skill.`
 - On Sat's own PR, the intent line's next step is `/pr-intent <n> "<your why>"`.
 - A reason names evidence Sat can check: "adds `POST /streaks/freeze` (api/streaks.ts)
-  for ticket PZ-88", not "adds a feature". An understanding reason names its trigger:
-  the category, the area and its count, or the export and its importer count.
+  for ticket PZ-88", not "adds a feature". An understanding reason names the trigger
+  that held: the category, or the area and its count.
 
 Line: `<lane> — <reason> → <next>`
 
@@ -162,5 +172,5 @@ remember — reverses #812: streak days move to the client → /pr-recall create
 `lane` is one of `intent|structure|behaviour|understanding|remember|trust`; `next` is
 the skill name, or `null` for trust. `still_true` is `yes|no|unclear`. `sensitive`
 holds `auth|money|data|security|concurrency|contract|gate`; `familiarity` is `null`
-with no meaningful files. **v2**: in v1, `sensitive` held `ui|schema|money|auth` and
-`familiarity` was a bare number over every touched path, this PR's commits included.
+with no meaningful files. **v2**: v1's `sensitive` held `ui|schema|money|auth`, and
+its `familiarity` was a bare number.

@@ -80,9 +80,9 @@ linked ticket, the PR description, commit messages, then the code.
 - Tag **[guess]** after every claim no text states, meaning one you inferred from the
   code alone. A claim the ticket or description states carries no tag; quote its
   source phrase in the JSON `from`.
-- Ticket: `gh issue view` for a GitHub issue. A ticket in another tracker (Jira,
-  Linear, Notion) counts only if a read-only CLI or MCP tool already on hand fetches
-  it. Otherwise use what the PR text quotes of it, and tag claims resting on it [guess].
+- Ticket: `gh issue view` for a GitHub issue. A ticket in another tracker (Jira, Linear,
+  Notion, Sentry) counts only if a read-only CLI or MCP tool already on hand fetches it.
+  Otherwise use what the PR text quotes of it, and tag claims resting on it [guess].
 - Close with one line: `Challenge any claim: reply with it and why you doubt it.` When
   Sat does, re-check that claim against the diff and ticket, and answer in one line:
   kept (with the evidence), revised (with the new wording), or dropped.
@@ -93,8 +93,9 @@ Compare the **stated** intent with the diff. On Sat's PR that is their why. On s
 else's it is the description plus the ticket, never your own [guess] claims.
 
 - **unbacked**: the stated intent claims it, and no code does it. Quote the claim.
-- **unstated**: the code does it, and the stated intent never mentions it. Cite
-  `file:line`. Formatting, lockfiles and generated code don't count.
+- **unstated**: a capability, user-visible behaviour, gate or breaking contract change
+  the stated intent never mentions. Cite `file:line`. Internals never count (refactors,
+  guards, logging, speed, formatting, generated code): PR templates keep them out.
 - **contradicts**: the code does something other than what is claimed. Quote the claim
   and cite the line.
 
@@ -104,7 +105,7 @@ Rank by how much of the diff each one covers and keep the top 5. None: print
 Line: `<kind> — <what> (<file:line>)`
 
 Done when every claim in the stated intent was checked against the code, and every
-meaningful hunk was traced to a claim or listed as unstated.
+meaningful hunk was traced to a claim, listed as unstated, or judged internal.
 
 ## Output
 
