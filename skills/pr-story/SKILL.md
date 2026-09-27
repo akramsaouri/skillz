@@ -92,13 +92,19 @@ through the changed code. Its `kind` names that entry: `screen` (a screen action
 `endpoint`, `job`, `cli` (a CLI or slash command), `webhook`, `event` (an SDK, realtime
 or OS callback), `launch` (app start, a root mount effect), else `other` (a git or
 agent hook). Walk each changed function's callers up (`git grep -n '<name>' "$SHA"`).
+A **changed function** is the innermost named function around a changed line (a
+declaration, a method, `const onSave = …`); an inline callback, such as an effect body,
+belongs to the one around it, and outside any function the changed hunk stands in.
 
-- Callers reaching the change only through one changed shared module (a hook, store,
-  util, component) are one flow, not a flow per importer. Its entry and `kind` still
-  come from what really triggers it: a tap in the screens using the module is `screen`.
-- Score a flow by its changed lines (added plus removed); a changed line scores once,
-  in the flow it most directly serves. A refactor or speed-up with no behaviour change
-  of its own scores in the flow it serves, or in none, never as a flow of its own.
+- One flow per entry action: changes reached from the same entry through the same
+  changed function are one flow, and so are callers reaching the change only through
+  one changed shared module (a hook, store, util, component). Its entry and `kind` come
+  from what really triggers it: a tap in the screens using the module is `screen`.
+- Score a flow by its changed lines (added plus removed), each line once. A line
+  serving two flows scores in the one with more categories (Step 3's test), then more
+  changed lines, both counted without shared lines; a flow left with none is dropped.
+  A refactor or speed-up with no behaviour change of its own scores in the flow it
+  serves, or in none, never as a flow of its own.
 - In no flow: Trust-class files and tests. Agent markdown (a skill, a slash command,
   `CLAUDE.md`) joins a flow only through its gate-changing lines, starting at what runs
   them: only those lines score, and only their categories count.
@@ -107,13 +113,17 @@ Nothing that runs reaches changed code (docs or slash-command markdown only, con
 renames, dependency bumps): no flows, so skip Step 3 and output only the file list.
 
 **Groups.** Two flows share a group when one changed function holds lines scored in
-each (outside any function: one changed hunk), or when changed lines in each call a
-function the diff adds. Never joined by: a shared file alone, a mechanical call-site
-edit (it only follows a rename, import swap or signature change made elsewhere), a
-root, route table or index that only mounts, routes to or exports each piece, or an
-always-loaded instruction file (`CLAUDE.md`, `AGENTS.md`). With 3 or more groups, open
-the output (after the pin) with `This PR does N separate things.`, N being the group
-count: each group is a review of its own.
+each, or when changed lines in each call the same function the diff adds or changes.
+A function the PR deletes or splits counts as changed: its pieces are read against it.
+Never joined by: a shared file alone, a mechanical call-site edit (it only follows a
+rename, import swap or signature change made elsewhere), a root, route table or index
+that only mounts, routes to or exports each piece, or an always-loaded instruction
+file (`CLAUDE.md`, `AGENTS.md`).
+
+A group is a **thing**, a review of its own, when its flows hold a sensitive category
+(Step 3's test) or ≥20 scored lines; any other group is a small fix. With N ≥ 3 things,
+open the output (after the pin) with `This PR does N separate things.`, or with K small
+fixes, `This PR does N separate things, plus K small fixes.`
 
 ## Step 3 — Diagram the riskiest flow
 
@@ -133,7 +143,7 @@ Draw one flow as one ```` ```mermaid ```` `sequenceDiagram`. Exactly one diagram
   text stays free of `;` and `#`, which break parsing, and of `file:line` citations.
 
 Under the diagram, one line per other flow, by risk then changed lines, except that
-every group's top flow comes before any group's second. At most 5, then `+N more flows`:
+every thing's top flow comes before any other flow. At most 5, then `+N more flows`:
 `Also: <entry> → <deepest changed hop> (<N> changed lines)`
 
 ## Output
@@ -168,7 +178,7 @@ Also: nightly streak_reset job → reset_streaks (12 changed lines)
   "schema": "pr-skills/story/v2",
   "pr": {"repo": "pr-zone/przone-app", "number": 971, "url": "https://github.com/pr-zone/przone-app/pull/971", "head_sha": "<40-hex>"},
   "generated_at": "2026-09-27T09:14:00Z",
-  "separate_things": null,
+  "separate_things": null, "small_fixes": null,
   "flows": [
     {"entry": "FreezeSheet: tap Use freeze", "kind": "screen", "group": 1, "changed_lines": 142, "diagrammed": true},
     {"entry": "nightly streak_reset job", "kind": "job", "group": 2, "changed_lines": 12, "diagrammed": false}
@@ -185,9 +195,10 @@ Also: nightly streak_reset job → reset_streaks (12 changed lines)
 ```
 
 `flows` holds every flow, the diagrammed one first, then in `Also:` order. `group`
-numbers the groups from 1 in that order; `separate_things` is the count of distinct
-`group` values when it is 3 or more, else `null`. `kind` is one of Step 2's kinds;
-`level` is `function|module`; `diagram` is `null` when there are no flows. The JSON
-`files` lists every path in full, unlike the text line. **v2**: flows gain `group`;
-`kind` gains `event` and `launch`; `changed_lines` leaves out tests and non-gate agent
-markdown; `flows` lists every flow, in the order above.
+numbers the groups from 1 in that order. `separate_things` is N, the count of things,
+when it is 3 or more, else `null`; `small_fixes` is K (0 or more) beside it, else
+`null`. `kind` is one of Step 2's kinds; `level` is `function|module`; `diagram` is
+`null` when there are no flows. The JSON `files` lists every path in full, unlike the
+text line. **v2**: flows gain `group`; `kind` gains `event` and `launch`;
+`changed_lines` leaves out tests and non-gate agent markdown; `flows` lists every
+flow, in the order above; `small_fixes`, added later, may be missing: read `null`.
