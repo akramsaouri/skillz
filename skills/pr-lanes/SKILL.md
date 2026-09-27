@@ -15,30 +15,25 @@ of the other pr-* skills are worth running on it, and which PRs need nothing at 
 Past decisions the PR touches go on top: a PR that quietly undoes one is the most
 expensive thing to miss.
 
-## Ground rules
-
-Shared by all six pr-* skills.
+## Ground rules, shared by all six pr-* skills
 
 - **Optional.** Nothing here gates a review or a merge; skipping this skill is always fine.
 - **Sat acts alone.** Every next step you name is one the user (Sat) can take by
   themselves. On someone else's PR, work only from what already exists: the diff, the
   PR description, the linked ticket and git history. Never suggest asking the author.
-- **Read-only.** Toward GitHub and every repo: no comments, reviews, labels, approvals,
-  pushes, commits, checkouts or branch changes, and never a browser. Use `gh` and `git`
-  read commands only: `gh pr view|diff`, `gh issue view`, `gh api` GETs,
-  `git show|log|diff|grep|blame|ls-tree|merge-base`, and `git fetch` (it adds objects
-  and moves no local branch). Scratch files under `/tmp` are fine. pr-recall's card
-  store is the only thing any pr-* skill writes.
-- **Git and gh only.** Never query a database or a running service, not even a
-  read-only `SELECT`: no `psql`, no local Supabase or Docker stack, no running app.
+- **Read-only, git and gh only.** No comments, reviews, labels, approvals, pushes,
+  commits, checkouts or branch changes. No browser, database or running service, not
+  even a read-only `SELECT`: no `psql`, no local Supabase or Docker stack. Read with
+  `gh pr view|diff`, `gh issue view`, `gh api` GETs, `git fetch` (it adds objects and
+  moves no local branch) and `git show|log|diff|grep|blame|ls-tree|merge-base`. Scratch
+  files go under `/tmp`; pr-recall's card store is the only thing any pr-* skill writes.
 - **Budgeted.** The budget is a ceiling, not a target: cut to fit. A line stays one
   line, never sub-bullets or a continuation. Each free-text field (a reason, question,
   claim, fact, correction) is at most 140 characters, in the text and in the JSON.
 - **Pinned.** Resolve the head SHA once and compute everything against it. Open with
   the pin line `<owner>/<repo>#<n> @ <sha7>`, outside the budget.
-- **Two outputs.** Plain text to read in Claude Code, then exactly one fenced `json`
-  block for the Lucidos Pulls app and review-prep rail: the same content, nothing
-  extra. The caller stores the JSON; only pr-recall writes a file, its card store.
+- **Two outputs.** Plain text for Claude Code, then exactly one fenced `json` block with
+  the same content, nothing extra, for the Lucidos Pulls app and review-prep rail to store.
 
 ## Budget
 
@@ -52,11 +47,12 @@ Input: a PR number in the current repo, `owner/repo#n`, or a PR URL. Pass it to
 bare number, `<owner/repo>` is `gh repo view --json nameWithOwner -q .nameWithOwner`.
 
 ```bash
-gh pr view -R <owner/repo> <n> --json number,url,title,body,author,state,mergedAt,headRefOid,baseRefOid,baseRefName,files,additions,deletions,closingIssuesReferences > /tmp/pr-<n>.json
-SHA=$(jq -r .headRefOid /tmp/pr-<n>.json)   # resolve ONCE: FETCH_HEAD is overwritten by any later fetch
-gh pr diff -R <owner/repo> <n> > /tmp/pr-<n>.diff   # the net diff; --patch is a per-commit series that repeats files
-git fetch origin "refs/pull/<n>/head" "$(jq -r .baseRefName /tmp/pr-<n>.json)"
-BASE=$(git merge-base "$(jq -r .baseRefOid /tmp/pr-<n>.json)" "$SHA")   # the before-state
+T=$(mktemp -d /tmp/pr-<n>.XXXXXX); echo "$T"   # one dir per run; reuse this path: shell variables die between tool calls
+gh pr view -R <owner/repo> <n> --json number,url,title,body,author,state,mergedAt,headRefName,headRefOid,baseRefOid,baseRefName,files,additions,deletions,closingIssuesReferences > "$T/pr.json"
+SHA=$(jq -r .headRefOid "$T/pr.json")   # resolve ONCE: FETCH_HEAD is overwritten by any later fetch
+gh pr diff -R <owner/repo> <n> > "$T/pr.diff"   # the net diff; --patch is a per-commit series that repeats files
+git fetch origin "refs/pull/<n>/head" "$(jq -r .baseRefName "$T/pr.json")"
+BASE=$(git merge-base "$(jq -r .baseRefOid "$T/pr.json")" "$SHA")   # the before-state
 git show "${SHA}:<path>"; git grep -n '<symbol>' "$SHA"   # read the head without checking it out
 ```
 
