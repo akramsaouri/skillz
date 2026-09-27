@@ -28,14 +28,16 @@ Shared by all six pr-* skills.
   `git show|log|diff|grep|blame|ls-tree|merge-base`, and `git fetch` (it adds objects
   and moves no local branch). Scratch files under `/tmp` are fine. pr-recall's card
   store is the only thing any pr-* skill writes.
+- **Git and gh only.** Never query a database or a running service, not even a
+  read-only `SELECT`: no `psql`, no local Supabase or Docker stack, no running app.
 - **Budgeted.** The budget is a ceiling, not a target: cut to fit. A line stays one
-  line, never sub-bullets or a continuation. Each free-text field (a reason, claim,
-  fact, correction) is at most 140 characters, in the text and in the JSON.
+  line, never sub-bullets or a continuation. Each free-text field (a reason, question,
+  claim, fact, correction) is at most 140 characters, in the text and in the JSON.
 - **Pinned.** Resolve the head SHA once and compute everything against it. Open with
   the pin line `<owner>/<repo>#<n> @ <sha7>`, outside the budget.
 - **Two outputs.** Plain text to read in Claude Code, then exactly one fenced `json`
   block for the Lucidos Pulls app and review-prep rail: the same content, nothing
-  extra. The caller stores the JSON; this skill writes no file.
+  extra. The caller stores the JSON; only pr-recall writes a file, its card store.
 
 ## Budget
 
@@ -44,22 +46,27 @@ typed as the argument is their input: show it verbatim, outside the budget.
 
 ## Acquire
 
-Input: a PR number in the current repo, `owner/repo#n`, or a PR URL.
+Input: a PR number in the current repo, `owner/repo#n`, or a PR URL. Pass it to
+`gh pr` as `-R <owner/repo> <n>`: gh reads `owner/repo#n` as a branch name. For a
+bare number, `<owner/repo>` is `gh repo view --json nameWithOwner -q .nameWithOwner`.
 
 ```bash
-gh pr view <pr> --json number,url,title,body,author,state,mergedAt,headRefOid,baseRefOid,baseRefName,files,additions,deletions,closingIssuesReferences > /tmp/pr-<n>.json
+gh pr view -R <owner/repo> <n> --json number,url,title,body,author,state,mergedAt,headRefOid,baseRefOid,baseRefName,files,additions,deletions,closingIssuesReferences > /tmp/pr-<n>.json
 SHA=$(jq -r .headRefOid /tmp/pr-<n>.json)   # resolve ONCE: FETCH_HEAD is overwritten by any later fetch
-gh pr diff <pr> > /tmp/pr-<n>.diff            # the net diff; --patch is a per-commit series that repeats files
+gh pr diff -R <owner/repo> <n> > /tmp/pr-<n>.diff   # the net diff; --patch is a per-commit series that repeats files
 git fetch origin "refs/pull/<n>/head" "$(jq -r .baseRefName /tmp/pr-<n>.json)"
 BASE=$(git merge-base "$(jq -r .baseRefOid /tmp/pr-<n>.json)" "$SHA")   # the before-state
-git show "$SHA:<path>"; git grep -n '<symbol>' "$SHA"   # read the head without checking it out
+git show "${SHA}:<path>"; git grep -n '<symbol>' "$SHA"   # read the head without checking it out
 ```
 
+- **zsh-safe.** Brace a SHA before a colon, `"${SHA}:<path>"` and `"${BASE}:<path>"`:
+  zsh reads `$SHA:h`, `:t`, `:r` and `:e` as modifiers (`hooks/x.ts` became `.ooks/x.ts`).
+  Pass each path as its own quoted word: zsh never splits an unquoted `$VAR` into words.
 - `repo` in the JSON is `owner/name`, taken from the PR URL.
 - **Own PR**: `author.login` equals `gh api user -q .login`.
 - **Not cloned locally** (or `origin` is another repo): read files with
-  `gh api "repos/<owner>/<repo>/contents/<path>?ref=$SHA" -H 'Accept: application/vnd.github.raw'`
-  and history with `gh api "repos/<owner>/<repo>/commits?path=<path>"`.
+  `gh api "repos/<owner/repo>/contents/<path>?ref=${SHA}" -H 'Accept: application/vnd.github.raw'`
+  and history with `gh api "repos/<owner/repo>/commits?path=<path>"`.
 
 ## Step 1 — The why
 

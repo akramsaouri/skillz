@@ -28,53 +28,73 @@ Shared by all six pr-* skills.
   `git show|log|diff|grep|blame|ls-tree|merge-base`, and `git fetch` (it adds objects
   and moves no local branch). Scratch files under `/tmp` are fine. pr-recall's card
   store is the only thing any pr-* skill writes.
+- **Git and gh only.** Never query a database or a running service, not even a
+  read-only `SELECT`: no `psql`, no local Supabase or Docker stack, no running app.
 - **Budgeted.** The budget is a ceiling, not a target: cut to fit. A line stays one
-  line, never sub-bullets or a continuation. Each free-text field (a reason, claim,
-  fact, correction) is at most 140 characters, in the text and in the JSON.
+  line, never sub-bullets or a continuation. Each free-text field (a reason, question,
+  claim, fact, correction) is at most 140 characters, in the text and in the JSON.
 - **Pinned.** Resolve the head SHA once and compute everything against it. Open with
   the pin line `<owner>/<repo>#<n> @ <sha7>`, outside the budget.
 - **Two outputs.** Plain text to read in Claude Code, then exactly one fenced `json`
   block for the Lucidos Pulls app and review-prep rail: the same content, nothing
-  extra. The caller stores the JSON; this skill writes no file.
+  extra. The caller stores the JSON; only pr-recall writes a file, its card store.
 
 ## Acquire
 
-Input: a PR number in the current repo, `owner/repo#n`, or a PR URL.
+Input: a PR number in the current repo, `owner/repo#n`, or a PR URL. Pass it to
+`gh pr` as `-R <owner/repo> <n>`: gh reads `owner/repo#n` as a branch name. For a
+bare number, `<owner/repo>` is `gh repo view --json nameWithOwner -q .nameWithOwner`.
 
 ```bash
-gh pr view <pr> --json number,url,title,body,author,state,mergedAt,headRefOid,baseRefOid,baseRefName,files,additions,deletions,closingIssuesReferences > /tmp/pr-<n>.json
+gh pr view -R <owner/repo> <n> --json number,url,title,body,author,state,mergedAt,headRefOid,baseRefOid,baseRefName,files,additions,deletions,closingIssuesReferences > /tmp/pr-<n>.json
 SHA=$(jq -r .headRefOid /tmp/pr-<n>.json)   # resolve ONCE: FETCH_HEAD is overwritten by any later fetch
-gh pr diff <pr> > /tmp/pr-<n>.diff            # the net diff; --patch is a per-commit series that repeats files
+gh pr diff -R <owner/repo> <n> > /tmp/pr-<n>.diff   # the net diff; --patch is a per-commit series that repeats files
 git fetch origin "refs/pull/<n>/head" "$(jq -r .baseRefName /tmp/pr-<n>.json)"
 BASE=$(git merge-base "$(jq -r .baseRefOid /tmp/pr-<n>.json)" "$SHA")   # the before-state
-git show "$SHA:<path>"; git grep -n '<symbol>' "$SHA"   # read the head without checking it out
+git show "${SHA}:<path>"; git grep -n '<symbol>' "$SHA"   # read the head without checking it out
 ```
 
+- **zsh-safe.** Brace a SHA before a colon, `"${SHA}:<path>"` and `"${BASE}:<path>"`:
+  zsh reads `$SHA:h`, `:t`, `:r` and `:e` as modifiers (`hooks/x.ts` became `.ooks/x.ts`).
+  Pass each path as its own quoted word: zsh never splits an unquoted `$VAR` into words.
 - `repo` in the JSON is `owner/name`, taken from the PR URL.
 - **Own PR**: `author.login` equals `gh api user -q .login`.
 - **Not cloned locally** (or `origin` is another repo): read files with
-  `gh api "repos/<owner>/<repo>/contents/<path>?ref=$SHA" -H 'Accept: application/vnd.github.raw'`
-  and history with `gh api "repos/<owner>/<repo>/commits?path=<path>"`.
+  `gh api "repos/<owner/repo>/contents/<path>?ref=${SHA}" -H 'Accept: application/vnd.github.raw'`
+  and history with `gh api "repos/<owner/repo>/commits?path=<path>"`.
 
 The depth defaults to `quiz`.
 
 ## Quiz: `--depth quiz`
 
-**Budget:** 3 questions, one line each.
+**Budget:** 3 questions, one line each, each question at most 140 characters.
 
-Write 3 **consequence** questions, each about what the code now does in a case the diff
+Write 3 **consequence** questions, each about what the code does in a case the diff
 creates or changes: "What happens if `profile.units` is null now?", "Where does a user
-land after a failed purchase?", "What does `syncSets` do with a set logged offline
-before this shipped?" Each one:
+land after a failed purchase?" At least one asks **why** the change was needed, the
+failure it prevents: "Before this PR, what did `useLocaleSync` write on every launch?"
+Each one:
 
-- has one correct answer, provable from the code at `$SHA` with a `file:line`;
+- has one correct answer, provable from repo code with a `file:line`: at `$SHA`, or at
+  `$BASE` for what the old code did, cited as `file:line@base`;
+- never turns on a library default (code under `node_modules`, a package's docs) or on
+  platform behaviour (which timeline entry WidgetKit shows, when the OS runs a task),
+  unless repo code pins it with an explicit option or config value;
 - asks about behaviour (null or empty input, errors, concurrency, old data, callers the
   diff left alone), never recall ("which file…", "what is the new function called");
 - covers a different part of the change, starting with the load-bearing one. On Sat's
   own PR, favour cases the diff doesn't show on its face.
 
-Print only the questions, keeping the answers to yourself until grading, then close
-with `Answer, then: /pr-check <n> --grade`.
+Line: `<id> — <question>`. Print the pin, the 3 lines, then
+`Answer, then: /pr-check <n> --grade`. Keep the answers to yourself until grading.
+
+```
+pr-zone/przone-app#971 @ 3f9c2ab
+3f9c2ab-q1 — A user misses a day while holding no freeze. What does streak_day() return for them now?
+3f9c2ab-q2 — Before this PR, a user taps Use freeze twice in quick succession. What happens to their freeze count?
+3f9c2ab-q3 — spend_freeze is called for a day that is already frozen. What does the user's freeze count do?
+Answer, then: /pr-check 971 --grade
+```
 
 ```json
 {
@@ -83,7 +103,9 @@ with `Answer, then: /pr-check <n> --grade`.
   "generated_at": "2026-09-27T09:14:00Z",
   "mode": "quiz",
   "questions": [
-    {"id": "3f9c2ab-q1", "question": "A user misses a day while holding no freeze. What does streak_day() return for them now?"}
+    {"id": "3f9c2ab-q1", "question": "A user misses a day while holding no freeze. What does streak_day() return for them now?"},
+    {"id": "3f9c2ab-q2", "question": "Before this PR, a user taps Use freeze twice in quick succession. What happens to their freeze count?"},
+    {"id": "3f9c2ab-q3", "question": "spend_freeze is called for a day that is already frozen. What does the user's freeze count do?"}
   ]
 }
 ```
@@ -102,8 +124,8 @@ Then compare it with the current `headRefOid`. If they differ, print
 `Stale: PR moved <quiz sha7> → <head sha7> since the quiz; graded against <quiz sha7>.`
 right after the pin (outside the budget) and set `"stale": true`.
 
-Line: `<id> correct|partial|wrong — <correction> (<file:line>)`. For a correct answer,
-the evidence stands in for the correction.
+Line: `<id> correct|partial|wrong — <correction> (<file:line>)`, `@base` marking old
+code. For a correct answer, the evidence stands in for the correction.
 
 ```json
 {
@@ -157,14 +179,13 @@ either covered by it or listed as missing.
 
 ## Drill: `--depth drill`
 
-A Socratic back-and-forth. "Drill" is the name everywhere (flag, events, UI).
-
-Chat-only, and it emits no JSON block.
+A Socratic back-and-forth, chat-only, with no JSON block. "Drill" is the name
+everywhere (flag, events, UI).
 
 **Budget:** per turn, at most one sentence of feedback on the last answer, plus one
 question of at most 2 sentences.
 
-Pin the SHA in the first message. Open with a consequence question on the load-bearing
-change. Build each next question on the last answer: dig into a wrong or partial one,
-or follow the flow one step further from a right one. Stop after 5 questions, or when
-Sat says so, with one line naming the weakest spot.
+Pin the SHA in the first message. Questions follow the quiz rules; open with one on the
+load-bearing change. Build each next question on the last answer: dig into a wrong or
+partial one, or follow the flow one step further from a right one. Stop after 5
+questions, or when Sat says so, with one line naming the weakest spot.
