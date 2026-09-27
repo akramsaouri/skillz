@@ -59,21 +59,19 @@ those facts. That is how a PR that quietly undoes an earlier decision gets caugh
   - **moved**: something lives somewhere else now. `files` lists the old and new paths.
   - **gotcha**: a trap that isn't visible at the call site.
 - `files` and `symbols` are the match keys: the paths and names a later PR would touch
-  if it disturbed the fact.
+  if it disturbed the fact. A later migration is a new file that no `files` entry can
+  match, so a schema card names its tables, functions and jobs in `symbols`.
 - `id` is `<repo>#<pr>-<n>`, and `store.py` assigns it.
 
 ## Store
 
 One JSON file, `{"schema": "pr-recall/cards/v1", "cards": [...]}`, holding the cards
-for every repo. Its path is `$PR_RECALL_STORE`. When that is unset it defaults to
-`$LUCIDOS_WORKSPACE/data/artifacts/pr-recall/cards.json`, the canonical store, a Lucidos
-workspace artifact. With neither variable set there is no store.
+for every repo, at `$PR_RECALL_STORE`, else at the canonical Lucidos workspace artifact
+`$LUCIDOS_WORKSPACE/data/artifacts/pr-recall/cards.json`. With neither set, no store.
 
-Every read and write goes through `<this-skill-dir>/store.py`, never by hand. It
-resolves the path; writes through `lucidos data write` when the `lucidos` CLI is on
-PATH and the store sits inside the workspace's `data/` (a direct atomic file write
-otherwise); replaces a PR's cards instead of appending duplicates; validates each card
-against the schema and budget; and refuses to overwrite a store it cannot parse.
+Every read and write goes through `<this-skill-dir>/store.py`, never by hand: it
+resolves the path, validates cards, replaces a PR's cards rather than appending, writes
+through `lucidos data write` when it can, and never overwrites a store it cannot parse.
 
 ```bash
 python3 <this-skill-dir>/store.py path                                             # exit 3 = no store
@@ -149,7 +147,7 @@ carries every match.
 
 1. Acquire, then `store.py overlap --repo <repo> < "$T/pr.diff"`. It returns the
    cards whose `files` the diff touches or whose `symbols` appear on its changed
-   lines, each with `via` saying which.
+   lines, each with `via` saying which. A PR that only adds files matches by `symbols`.
 2. Read each card's fact against the diff at `$SHA` and set `still_true`:
    - **yes**: the PR leaves the fact intact, for instance it edits the file but not the
      part the fact is about.
@@ -160,7 +158,8 @@ carries every match.
 3. Order `no` → `unclear` → `yes`. No store, or no overlap: print the one line
    `Recall: no matching cards`, and emit `"matches": []`.
 
-pr-lanes runs this procedure, keeps the top 3, and prints the same no-match line.
+pr-lanes runs this procedure, keeps the top 3, and on no match prints the same line
+with `"recall": []`.
 
 ```json
 {

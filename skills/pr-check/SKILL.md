@@ -65,15 +65,18 @@ git show "${SHA}:<path>"; git grep -n '<symbol>' "$SHA"   # read the head withou
 
 Write 3 **consequence** questions, each about what the code does in a case the diff
 creates or changes: "What happens if `profile.units` is null now?", "Where does a user
-land after a failed purchase?" At least one asks **why** the change was needed, the
-failure it prevents: "Before this PR, what did `useLocaleSync` write on every launch?"
-Each one:
+land after a failed purchase?" At least one is a **why** question: it asks how the old
+code failed, the failure this PR removes, answered at `$BASE`: "Before this PR, what
+did a second tap on Place order do while the first order was still saving?" Each one:
 
 - has one correct answer, provable from repo code with a `file:line`: at `$SHA`, or at
-  `$BASE` for what the old code did, cited as `file:line@base`;
-- never turns on a library default (code under `node_modules`, a package's docs) or on
-  platform behaviour (which timeline entry WidgetKit shows, when the OS runs a task),
-  unless repo code pins it with an explicit option or config value;
+  `$BASE` for what the old code did, cited as `file:line@base`. Cite an absence by the
+  range that lacks it (`file:12-40`) and the `git grep` that finds nothing;
+- never turns on an unset library default (the answer would change if someone set an
+  option the repo leaves unset) or on OS or scheduler timing (which widget entry the OS
+  shows, when a background task runs). Fair game: the documented contract of a call the
+  repo makes (an effect re-runs when a listed dependency changes), and language
+  semantics (JS coercion, SQL `NULL` comparisons);
 - asks about behaviour (null or empty input, errors, concurrency, old data, callers the
   diff left alone), never recall ("which file…", "what is the new function called");
 - covers a different part of the change, starting with the load-bearing one. On Sat's
@@ -119,7 +122,7 @@ Then compare it with the current `headRefOid`. If they differ, print
 right after the pin (outside the budget) and set `"stale": true`.
 
 Line: `<id> correct|partial|wrong — <correction> (<file:line>)`, `@base` marking old
-code. For a correct answer, the evidence stands in for the correction.
+code, an absence cited as in the quiz. A correct answer's evidence is its correction.
 
 ```json
 {
