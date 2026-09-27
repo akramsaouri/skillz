@@ -19,12 +19,13 @@ the after-state at the head.
 - **Sat acts alone.** Every next step you name is one the user (Sat) can take by
   themselves. On someone else's PR, work only from what already exists: the diff, the
   PR description, the linked ticket and git history. Never suggest asking the author.
-- **Read-only, git and gh only.** No comments, reviews, labels, approvals, pushes,
-  commits, checkouts or branch changes. No browser, database or running service, not
-  even a read-only `SELECT`: no `psql`, no local Supabase or Docker stack. Read with
-  `gh pr view|diff`, `gh issue view`, `gh api` GETs, `git fetch` (it adds objects and
-  moves no local branch) and `git show|log|diff|grep|blame|ls-tree|merge-base`. Scratch
-  files go under `/tmp`; pr-recall's card store is the only thing any pr-* skill writes.
+- **Read-only.** No comments, reviews, labels, approvals, pushes, commits, checkouts or
+  branch changes. No browser, database or running service, not even a read-only
+  `SELECT`: no `psql`, no local Supabase or Docker stack. Read with `gh pr view|diff`,
+  `gh issue view`, `gh api` GETs, `git fetch` (it adds objects, moves no branch),
+  `git show|log|diff|grep|blame|ls-tree|merge-base|config`, `jq`, `mktemp`, `wc` and
+  pr-recall's `python3 store.py`. Scratch files go under `/tmp`; pr-recall's card store
+  is the only thing any pr-* skill writes.
 - **Budgeted.** The budget is a ceiling, not a target: cut to fit. A line stays one
   line, never sub-bullets or a continuation. Each free-text field (a reason, question,
   claim, fact, correction) is at most 140 characters, in the text and in the JSON.
