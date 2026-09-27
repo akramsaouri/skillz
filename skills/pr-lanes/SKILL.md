@@ -88,8 +88,8 @@ Read these from the metadata and the diff. They are also the JSON `signals`.
   auto-merge, release or a CI skip. A gate change is meaningful: it fires `behaviour`
   and is sensitive `gate`.
 - **Meaningful files** (`meaningful_files`): every other changed file. Only they fire
-  the other lanes. Tests (`*.test.*`, `*.spec.*`, `__tests__/`, `tests/`) are meaningful, but no
-  structure threshold counts them.
+  the other lanes. Tests (`*.test.*`, `*.spec.*`, `__tests__/`, `tests/`) are
+  meaningful, but no structure threshold counts them.
 - **Areas**: of the meaningful files other than tests. An area is the first path
   segment, or the first two under `apps/`, `packages/`, `services/`, `libs/`, `src/`,
   `.claude/`, `.agents/`; a skill is its own area (`.claude/skills/release`). Root
