@@ -87,9 +87,10 @@ the metadata.
 ## Step 2 — Find the flows
 
 A **flow** is one distinct behaviour change, traced from the entry point that runs it
-(a screen action, an endpoint, a job, a CLI or slash command, a webhook, an SDK or
-realtime event, app launch, a git or agent hook) through the changed code. Walk each
-changed function's callers up (`git grep -n '<name>' "$SHA"`).
+through the changed code. Its `kind` names that entry: `screen` (a screen action),
+`endpoint`, `job`, `cli` (a CLI or slash command), `webhook`, `event` (an SDK, realtime
+or OS callback), `launch` (app start, a root mount effect), else `other` (a git or
+agent hook). Walk each changed function's callers up (`git grep -n '<name>' "$SHA"`).
 
 - Callers reaching the change only through one changed shared module (a hook, store,
   util, component) are one flow, not a flow per importer. Its entry and `kind` still
@@ -105,11 +106,13 @@ Nothing that runs reaches changed code (docs or slash-command markdown only, con
 renames, dependency bumps): no flows, so skip Step 3 and output only the file list.
 
 **Groups.** Two flows share a group when one changed function holds lines scored in
-each (outside any function: one changed hunk). A shared file alone never joins them,
-nor does a mechanical call-site edit (it only follows a rename, import swap or signature
-change made elsewhere) or an always-loaded instruction file (`CLAUDE.md`, `AGENTS.md`).
-With 3 or more groups, open the output (after the pin) with `This PR does N separate
-things.`, N being the group count: each group is a review of its own.
+each (outside any function: one changed hunk), or when changed lines in each call a
+function the diff adds. Never joined by: a shared file alone, a mechanical call-site
+edit (it only follows a rename, import swap or signature change made elsewhere), a
+root, route table or index that only mounts, routes to or exports each piece, or an
+always-loaded instruction file (`CLAUDE.md`, `AGENTS.md`). With 3 or more groups, open
+the output (after the pin) with `This PR does N separate things.`, N being the group
+count: each group is a review of its own.
 
 ## Step 3 — Diagram the riskiest flow
 
@@ -182,10 +185,8 @@ Also: nightly streak_reset job → reset_streaks (12 changed lines)
 
 `flows` holds every flow, the diagrammed one first, then in `Also:` order. `group`
 numbers the groups from 1 in that order; `separate_things` is the count of distinct
-`group` values when it is 3 or more, else `null`. `kind` is
-`screen|endpoint|job|cli|webhook|event|launch|other`: `event` is an SDK, realtime or OS
-callback, `launch` is app start or a root mount effect, a slash command is `cli`, a git
-or agent hook is `other`. `level` is `function|module`. `diagram` is `null` when there
-are no flows. The JSON `files` lists every path in full, unlike the text line.
-**v2**: flows gain `group`; `kind` gains `event` and `launch`; `changed_lines` leaves
-out tests and non-gate agent markdown; `flows` lists every flow, in the order above.
+`group` values when it is 3 or more, else `null`. `kind` is one of Step 2's kinds;
+`level` is `function|module`; `diagram` is `null` when there are no flows. The JSON
+`files` lists every path in full, unlike the text line. **v2**: flows gain `group`;
+`kind` gains `event` and `launch`; `changed_lines` leaves out tests and non-gate agent
+markdown; `flows` lists every flow, in the order above.

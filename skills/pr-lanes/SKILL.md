@@ -106,10 +106,9 @@ Read these from the metadata and the diff. They are also the JSON `signals`.
   (deleting or migrating stored data), `security` (what an attacker could reach:
   secrets, sandboxing, input validation; a line that is also `auth` is `auth` only),
   `concurrency` (races, locks, retries, ordering), `contract` (a breaking change to an
-  export, API or schema that callers outside this diff use: a removed name or field, a
-  changed signature, return shape or side effect; additive changes, and callers the diff
-  updates, don't count), `gate` (review, merge, release, CI skip, in code or agent
-  instructions).
+  export, API or schema that callers outside this diff use: a removed name, a changed
+  signature, return shape or side effect; additive changes, and callers the diff
+  updates, don't count), `gate` (review, merge, release, CI skip, in code or prompts).
 - **Familiarity**: how well Sat knew each area in the year before BASE's date (not
   today's: re-runs must agree). Count Sat's commits from `$BASE`, which leaves out this
   PR's own, one call per area with the area as one quoted word (`(root)` is
@@ -126,7 +125,7 @@ Test every lane against its trigger and tag each one that holds, in table order.
 | structure | ≥3 areas besides `(root)`, ≥10 meaningful files besides tests, ≥3 new abstractions, or a move or refactor at scale | `/pr-story` |
 | behaviour | a user can notice it (UI, copy, navigation, notifications, errors the user sees, public API or CLI output), or it changes a gate | `/pr-behaviour` |
 | understanding | `sensitive` is not empty, or the least familiar area has ≤2 commits | `/pr-check` |
-| remember | a recall hit reads `no`, the PR reverses a rule the repo writes down (in `CLAUDE.md`, docs or a code comment), or it writes down a new rule for later code (always, never, only, must). A rule written into a Trust-class file fires this too; a decision that lives only in code does not | `/pr-recall create` once merged |
+| remember | a recall hit reads `no`, the PR reverses a rule the repo writes down, or it writes down a new convention: a rule for code beyond its own lines, in `CLAUDE.md`, docs or a comment ("mount only from the bridge"), which fires this even in a Trust-class file. A comment explaining its own lines, or a decision that lives only in code, does not | `/pr-recall create` once merged |
 | trust | there are no meaningful files: every change is Trust-class | none |
 
 - **trust is exclusive.** No meaningful files: print the trust line and no other lane
