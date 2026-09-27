@@ -95,16 +95,25 @@ agent hook). Walk each changed function's callers up (`git grep -n '<name>' "$SH
 A **changed function** is the innermost named function around a changed line (a
 declaration, a method, `const onSave = …`); an inline callback, such as an effect body,
 belongs to the one around it, and outside any function the changed hunk stands in.
+Imports and module-level constants and types are never one: they score with the flow
+that uses the name.
 
 - One flow per entry action: changes reached from the same entry through the same
   changed function are one flow, and so are callers reaching the change only through
   one changed shared module (a hook, store, util, component). Its entry and `kind` come
   from what really triggers it: a tap in the screens using the module is `screen`.
-- Score a flow by its changed lines (added plus removed), each line once. A line
-  serving two flows scores in the one with more categories (Step 3's test), then more
-  changed lines, both counted without shared lines; a flow left with none is dropped.
-  A refactor or speed-up with no behaviour change of its own scores in the flow it
-  serves, or in none, never as a flow of its own.
+- A moved registration (a listener, a subscription, a bridge holding one) is one flow,
+  entered at the callback where its effect is observed, not where it is registered.
+- Score a flow by its **changed lines**, each once: the added plus removed lines of
+  `git diff -w "$BASE" "$SHA"`, not counting blank or comment-only lines. Every count
+  uses them: the size gate, Step 3's tie-break, `changed_lines`. A line **serves** a
+  flow when it is on that flow's traced call path. A line serving two flows scores in
+  the one with more categories (Step 3's test), then more changed lines, both counted
+  without shared lines. A refactor or speed-up with no behaviour change of its own
+  scores in the flow it serves, or in none, never as a flow of its own.
+- A flow left with no lines of its own is **emptied**: it stays, with 0 changed lines,
+  in the group of the flow that took most of its lines. It never makes a group a thing
+  or a small fix, and is never diagrammed.
 - In no flow: Trust-class files and tests. Agent markdown (a skill, a slash command,
   `CLAUDE.md`) joins a flow only through its gate-changing lines, starting at what runs
   them: only those lines score, and only their categories count.
@@ -121,9 +130,9 @@ that only mounts, routes to or exports each piece, or an always-loaded instructi
 file (`CLAUDE.md`, `AGENTS.md`).
 
 A group is a **thing**, a review of its own, when its flows hold a sensitive category
-(Step 3's test) or ≥20 scored lines; any other group is a small fix. With N ≥ 3 things,
-open the output (after the pin) with `This PR does N separate things.`, or with K small
-fixes, `This PR does N separate things, plus K small fixes.`
+(Step 3's test) and ≥4 changed lines, or ≥20 changed lines; any other group is a small
+fix. With N ≥ 3 things, open the output (after the pin) with `This PR does N separate
+things.`, or with K small fixes, `This PR does N separate things, plus K small fixes.`
 
 ## Step 3 — Diagram the riskiest flow
 
@@ -142,9 +151,10 @@ Draw one flow as one ```` ```mermaid ```` `sequenceDiagram`. Exactly one diagram
 - Participant ids are bare identifiers (`participant SS as StreakService`). Message
   text stays free of `;` and `#`, which break parsing, and of `file:line` citations.
 
-Under the diagram, one line per other flow, by risk then changed lines, except that
-every thing's top flow comes before any other flow. At most 5, then `+N more flows`:
-`Also: <entry> → <deepest changed hop> (<N> changed lines)`
+Under the diagram, one line per other flow: every thing's top flow, then emptied flows,
+then the rest, each part by risk then changed lines. At most 5, then `+N more flows`:
+`Also: <entry> → <deepest changed hop> (<N> changed lines)`, or `(no lines of its own)`
+for an emptied flow.
 
 ## Output
 
@@ -200,5 +210,6 @@ when it is 3 or more, else `null`; `small_fixes` is K (0 or more) beside it, els
 `null`. `kind` is one of Step 2's kinds; `level` is `function|module`; `diagram` is
 `null` when there are no flows. The JSON `files` lists every path in full, unlike the
 text line. **v2**: flows gain `group`; `kind` gains `event` and `launch`;
-`changed_lines` leaves out tests and non-gate agent markdown; `flows` lists every
-flow, in the order above; `small_fixes`, added later, may be missing: read `null`.
+`changed_lines` counts Step 2's changed lines; `flows` lists every flow, in the order
+above. Added later, so older v2 files lack them: `small_fixes` (read `null`), emptied
+flows with `changed_lines: 0`, and counting on `git diff -w` without blanks or comments.
