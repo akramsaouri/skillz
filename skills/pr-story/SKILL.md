@@ -72,7 +72,8 @@ Group every changed file into steps, so that each file comes after what it depen
   services → view models → views → tests for a Swift one.
 - Config and CI go where they take effect. pr-lanes' Trust-class files (docs, QA specs,
   translations, fixtures, generated code, agent prompts that change no gate) go in a
-  final `skip` step: docs are never a layer.
+  final `skip` step: docs are never a layer. Files in an import cycle share one step,
+  at the earliest layer among them.
 - At most 8 steps, not counting `skip`: merge the smallest adjacent ones to fit. A PR
   of Trust-class files only (docs, skills, slash commands) orders them in the steps.
 
@@ -86,42 +87,49 @@ the metadata.
 ## Step 2 — Find the flows
 
 A **flow** is one distinct behaviour change, traced from the entry point that runs it
-(a screen action, an endpoint, a job, a CLI command, a webhook, a git or agent hook)
-through the changed code. Walk each changed function's callers up (`git grep -n '<name>' "$SHA"`).
+(a screen action, an endpoint, a job, a CLI or slash command, a webhook, an SDK or
+realtime event, app launch, a git or agent hook) through the changed code. Walk each
+changed function's callers up (`git grep -n '<name>' "$SHA"`).
 
 - Callers reaching the change only through one changed shared module (a hook, store,
-  util, component) are one flow that starts at the module, not a flow per importer.
+  util, component) are one flow, not a flow per importer. Its entry and `kind` still
+  come from what really triggers it: a tap in the screens using the module is `screen`.
 - Score a flow by its changed lines (added plus removed); a changed line scores once,
   in the flow it most directly serves. A refactor or speed-up with no behaviour change
-  of its own is part of the flow it serves, never a flow of its own.
-- Trust-class files are in no flow. Agent markdown (a skill, a slash command,
-  `CLAUDE.md`) joins a flow only where it changes a gate, starting at what runs it.
+  of its own scores in the flow it serves, or in none, never as a flow of its own.
+- In no flow: Trust-class files and tests. Agent markdown (a skill, a slash command,
+  `CLAUDE.md`) joins a flow only through its gate-changing lines, starting at what runs
+  them: only those lines score, and only their categories count.
 
 Nothing that runs reaches changed code (docs or slash-command markdown only, config,
 renames, dependency bumps): no flows, so skip Step 3 and output only the file list.
 
-Group flows that share a changed file. With 3 or more groups, open the output (after
-the pin) with `This PR does N separate things.`, N being the group count: each group
-is a review of its own.
+**Groups.** Two flows share a group when one changed function holds lines scored in
+each (outside any function: one changed hunk). A shared file alone never joins them,
+nor does a mechanical call-site edit (it only follows a rename, import swap or signature
+change made elsewhere) or an always-loaded instruction file (`CLAUDE.md`, `AGENTS.md`).
+With 3 or more groups, open the output (after the pin) with `This PR does N separate
+things.`, N being the group count: each group is a review of its own.
 
 ## Step 3 — Diagram the riskiest flow
 
 Draw one flow as one ```` ```mermaid ```` `sequenceDiagram`. Exactly one diagram per run.
 
-- Pick by risk, not size: the flow whose changed lines touch the most of pr-lanes'
-  sensitive categories (`auth`, `money`, `data`, `security`, `concurrency`, `contract`,
-  `gate`); changed lines break a tie.
+- Pick by risk, not size. Recompute pr-lanes' sensitive categories per flow, on that
+  flow's scored lines only, with pr-lanes' test: a line must alter the category, not
+  just read, render or memoize it. Most categories wins; changed lines break a tie.
 - At most about 8 participants and 15 messages. If the flow is bigger, draw it at
   module level: participants become modules or services, messages the calls between them.
-- Draw the changed hops, plus unchanged hops only where they connect two changed ones.
-  End a new hop's text with ` [new]` and a changed hop's with ` [changed]`. Draw a hop
-  the PR removes with `-x`, ending ` [removed]`.
-- An unchanged entry point may open the diagram as context: end its participant label
-  with ` [unchanged]`. Docs are never a participant.
+- Draw the changed hops, unchanged hops that connect two changed ones, the unchanged
+  entry hop, and at most one unchanged terminal hop where the risk lands (the table a
+  change locks, the service it calls). End a new hop's text with ` [new]` and a changed
+  hop's with ` [changed]`. Draw a hop the PR removes with `-x`, ending ` [removed]`.
+- End every unchanged participant's label with ` [unchanged]`. Docs are never a participant.
 - Participant ids are bare identifiers (`participant SS as StreakService`). Message
   text stays free of `;` and `#`, which break parsing, and of `file:line` citations.
 
-Under the diagram, one line per other flow, at most 5, then `+N more flows`:
+Under the diagram, one line per other flow, by risk then changed lines, except that
+every group's top flow comes before any group's second. At most 5, then `+N more flows`:
 `Also: <entry> → <deepest changed hop> (<N> changed lines)`
 
 ## Output
@@ -153,13 +161,13 @@ Also: nightly streak_reset job → reset_streaks (12 changed lines)
 
 ```json
 {
-  "schema": "pr-skills/story/v1",
+  "schema": "pr-skills/story/v2",
   "pr": {"repo": "pr-zone/przone-app", "number": 971, "url": "https://github.com/pr-zone/przone-app/pull/971", "head_sha": "<40-hex>"},
   "generated_at": "2026-09-27T09:14:00Z",
   "separate_things": null,
   "flows": [
-    {"entry": "FreezeSheet: tap Use freeze", "kind": "screen", "changed_lines": 142, "diagrammed": true},
-    {"entry": "nightly streak_reset job", "kind": "job", "changed_lines": 12, "diagrammed": false}
+    {"entry": "FreezeSheet: tap Use freeze", "kind": "screen", "group": 1, "changed_lines": 142, "diagrammed": true},
+    {"entry": "nightly streak_reset job", "kind": "job", "group": 2, "changed_lines": 12, "diagrammed": false}
   ],
   "diagram": {"level": "function", "participants": 4, "messages": 6, "mermaid": "sequenceDiagram\n  participant FS as FreezeSheet [unchanged]\n  ..."},
   "steps": [
@@ -172,7 +180,12 @@ Also: nightly streak_reset job → reset_streaks (12 changed lines)
 }
 ```
 
-`separate_things` is the group count when it is 3 or more, else `null`. `kind` is
-`screen|endpoint|job|cli|webhook|other`; a flow starting at a shared module or a git
-or agent hook is `other`. `level` is `function|module`. `diagram` is `null` when there are no
-flows. The JSON `files` lists every path in full, unlike the text line.
+`flows` holds every flow, the diagrammed one first, then in `Also:` order. `group`
+numbers the groups from 1 in that order; `separate_things` is the count of distinct
+`group` values when it is 3 or more, else `null`. `kind` is
+`screen|endpoint|job|cli|webhook|event|launch|other`: `event` is an SDK, realtime or OS
+callback, `launch` is app start or a root mount effect, a slash command is `cli`, a git
+or agent hook is `other`. `level` is `function|module`. `diagram` is `null` when there
+are no flows. The JSON `files` lists every path in full, unlike the text line.
+**v2**: flows gain `group`; `kind` gains `event` and `launch`; `changed_lines` leaves
+out tests and non-gate agent markdown; `flows` lists every flow, in the order above.
