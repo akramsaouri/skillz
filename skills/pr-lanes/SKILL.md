@@ -87,7 +87,7 @@ Read these from the metadata and the diff. They are also the JSON `signals`.
   whatever they change; translations, fixtures, snapshots; agent prompts, skills and
   hooks (`CLAUDE.md`, `.claude/`, `.agents/`) unless they change a gate: review, merge,
   auto-merge, release or a CI skip. A gate change is meaningful: it fires `behaviour`
-  and is sensitive `gate`.
+  and is sensitive `gate`; as in pr-story, the file's other lines add no category.
 - **Meaningful files** (`meaningful_files`): every other changed file. Only they fire
   the other lanes. Tests (`*.test.*`, `*.spec.*`, `__tests__/`, `tests/`) are
   meaningful, but no structure threshold counts them.
@@ -103,13 +103,20 @@ Read these from the metadata and the diff. They are also the JSON `signals`.
   `APP-40`) or issue URL in the title, body or `headRefName`, any case; else `null`.
 - **Sensitive**: categories the meaningful lines alter, not just read, render or
   memoize; UI, copy and styling never count. `auth` (who may do what: sessions, tokens,
-  roles, permissions, grants, RLS), `money` (payments, prices, entitlements), `data`
-  (deleting or migrating stored data), `security` (what an attacker could reach:
-  secrets, sandboxing, input validation; a line that is also `auth` is `auth` only),
-  `concurrency` (races, locks, retries, ordering), `contract` (a breaking change to an
-  export, API or schema that callers outside this diff use: a removed name, a changed
-  signature, return shape or side effect; additive changes, and callers the diff
-  updates, don't count), `gate` (review, merge, release, CI skip, in code or prompts).
+  roles, permissions, grants, RLS), `money` (payments, prices, entitlements; adding,
+  removing or moving a paywall check, one that withholds a feature or opens the
+  paywall, changes what a tier unlocks and counts; reading `isPro` only to choose what
+  renders doesn't), `data` (deleting or migrating stored user or production data; QA
+  fixtures, and seed or cleanup runs against a local test DB, don't count), `security`
+  (what an attacker could reach: secrets, sandboxing, input validation; a line that is
+  also `auth` is `auth` only), `concurrency` (races, locks, retries, ordering),
+  `contract` (a breaking change to an export, API or schema that callers outside this
+  diff use: a removed name, a changed signature or return shape, or a changed side
+  effect such a caller's code observes or relies on: a write, a navigation, a throw, a
+  returned value. Internal refresh mechanics, an added step that takes away nothing
+  callers relied on, an effect re-homed so every caller still gets it, identical
+  resulting state, additive changes and callers the diff updates don't count), `gate`
+  (review, merge, release, CI skip, in code or prompts).
 - **Familiarity**: how well Sat knew each area in the year before BASE's date (not
   today's: re-runs must agree). Count Sat's commits from `$BASE`, which leaves out this
   PR's own, one call per area with the area as one quoted word (`(root)` is
@@ -122,7 +129,7 @@ Test every lane against its trigger and tag each one that holds, in table order.
 
 | Lane | Fires when | Next |
 |---|---|---|
-| intent | the PR adds a capability (a new route, screen, endpoint, job, flag or public API), or makes a capability, user-visible behaviour, gate or breaking contract change its title and body never mention. Internals never count: PR templates often keep them out of the body. A fix or refactor alone is not intent | `/pr-intent` |
+| intent | the PR adds a capability (a new route, screen, endpoint, job, flag or public API), or makes a capability, user-visible behaviour, gate or breaking contract change (by `contract`'s test) its title and body never mention. Internals never count: PR templates often keep them out of the body. A fix or refactor alone is not intent | `/pr-intent` |
 | structure | ≥3 areas besides `(root)`, ≥10 meaningful files besides tests, ≥3 new abstractions, or a move or refactor at scale | `/pr-story` |
 | behaviour | a user can notice it (UI, copy, navigation, notifications, errors the user sees, public API or CLI output), or it changes a gate | `/pr-behaviour` |
 | understanding | `sensitive` is not empty, or the least familiar area has ≤2 commits | `/pr-check` |
