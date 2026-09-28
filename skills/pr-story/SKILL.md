@@ -2,8 +2,9 @@
 name: pr-story
 description: >
   Order a pull request's diff into a reading story (types, data, logic, UI,
-  tests) with exactly one Mermaid sequence diagram of its riskiest flow. Use when
-  asked how to read a PR, or how its pieces fit together.
+  tests) with exactly one Mermaid diagram of its riskiest flow, as a sequence,
+  state or flowchart diagram depending on the change. Use when asked how to
+  read a PR, or how its pieces fit together.
 argument-hint: "<pr>"
 ---
 
@@ -137,20 +138,38 @@ things.`, or with K small fixes, `This PR does N separate things, plus K small f
 
 ## Step 3 — Diagram the riskiest flow
 
-Draw one flow as one ```` ```mermaid ```` `sequenceDiagram`. Exactly one diagram per run.
+Draw one flow as one Mermaid diagram: `sequenceDiagram`, `stateDiagram-v2`, or
+`flowchart TD`. Exactly one diagram per run.
 
-- Pick by risk, not size. Recompute pr-lanes' sensitive categories per flow over every
-  line serving it, shared or not, with pr-lanes' test: a line must alter the category,
-  not just read, render or memoize it. Most categories wins; changed lines break a tie.
-- At most about 8 participants and 15 messages. If the flow is bigger, draw it at
-  module level: participants become modules or services, messages the calls between them.
-- Draw the changed hops, unchanged hops that connect two changed ones, the unchanged
-  entry hop, and at most one unchanged terminal hop where the risk lands (the table a
-  change locks, the service it calls). End a new hop's text with ` [new]` and a changed
-  hop's with ` [changed]`. Draw a hop the PR removes with `-x`, ending ` [removed]`.
-- End every unchanged participant's label with ` [unchanged]`. Docs are never a participant.
-- Participant ids are bare identifiers (`participant SS as StreakService`). Message
-  text stays free of `;` and `#`, which break parsing, and of `file:line` citations.
+- Pick the flow by risk, not size. Recompute pr-lanes' sensitive categories per flow
+  over every line serving it, shared or not, with pr-lanes' test: a line must alter the
+  category, not just read, render or memoize it. Most categories wins; changed lines
+  break a tie.
+- Pick the kind to fit the flow, not the flow to fit a kind. `sequenceDiagram`
+  (default): the risk is in who calls whom and in what order across components or
+  services — store → RPC → table, request/response, an async hop. `stateDiagram-v2`:
+  the risk is in the states and transitions of one thing (a timer, a sheet or keypad
+  open/closed, a subscription, a workout lifecycle), and which transitions were added,
+  changed or removed matters more than call order. `flowchart TD`: the risk is
+  branching logic in one place — guards, feature flags, fallbacks, validation paths.
+  Top-down only (`TD`), so it stays narrow on a phone. Unsure which fits: draw
+  `sequenceDiagram`.
+- **sequenceDiagram**, at most about 8 participants and 15 messages. If the flow is
+  bigger, draw it at module level: participants become modules or services, messages
+  the calls between them. Draw the changed hops, unchanged hops that connect two
+  changed ones, the unchanged entry hop, and at most one unchanged terminal hop where
+  the risk lands (the table a change locks, the service it calls). End a new hop's text
+  with ` [new]` and a changed hop's with ` [changed]`. Draw a hop the PR removes with
+  `-x`, ending ` [removed]`. End every unchanged participant's label with
+  ` [unchanged]`. Docs are never a participant. Participant ids are bare identifiers
+  (`participant SS as StreakService`).
+- **stateDiagram-v2**, at most about 8 states and 12 transitions. States are bare ids
+  with a label, `state "Open" as Open`. End a new transition's label with ` [new]`, a
+  changed one's with ` [changed]`, a removed one's with ` [removed]`.
+- **flowchart TD**, at most about 12 nodes. Decision points are `{...}` nodes; tag a
+  new, changed or removed branch the same way, on the edge label or the node text.
+- All three: bare ids; message, transition and node text stay free of `;` and `#`,
+  which break parsing, and of `file:line` citations.
 
 Under the diagram, one line per other flow: every thing's top flow, then emptied flows,
 then the rest, each part by risk then changed lines. At most 5, then `+N more flows`:
@@ -184,9 +203,25 @@ Also: nightly streak_reset job → reset_streaks (12 changed lines)
 5. skip — database.types.ts, en.json — generated from the migration; badge copy
 ````
 
+A flow whose risk is state, not call order, draws `stateDiagram-v2` instead:
+
+````
+```mermaid
+stateDiagram-v2
+  state "Hidden" as Hidden
+  state "Visible" as Visible
+  state "KeypadOpen" as KeypadOpen
+  [*] --> Hidden
+  Hidden --> Visible: open rest sheet [changed]
+  Visible --> KeypadOpen: focus duration field [new]
+  KeypadOpen --> Visible: dismiss keypad, sheet stays hidden [new]
+  Visible --> Hidden: dismiss sheet
+```
+````
+
 ```json
 {
-  "schema": "pr-skills/story/v2",
+  "schema": "pr-skills/story/v3",
   "pr": {"repo": "pr-zone/przone-app", "number": 971, "url": "https://github.com/pr-zone/przone-app/pull/971", "head_sha": "<40-hex>"},
   "generated_at": "2026-09-27T09:14:00Z",
   "separate_things": null, "small_fixes": null,
@@ -194,7 +229,7 @@ Also: nightly streak_reset job → reset_streaks (12 changed lines)
     {"entry": "FreezeSheet: tap Use freeze", "kind": "screen", "group": 1, "changed_lines": 142, "diagrammed": true},
     {"entry": "nightly streak_reset job", "kind": "job", "group": 2, "changed_lines": 12, "diagrammed": false}
   ],
-  "diagram": {"level": "function", "participants": 4, "messages": 6, "mermaid": "sequenceDiagram\n  participant FS as FreezeSheet [unchanged]\n  ..."},
+  "diagram": {"kind": "sequence", "level": "function", "participants": 4, "messages": 6, "mermaid": "sequenceDiagram\n  participant FS as FreezeSheet [unchanged]\n  ..."},
   "steps": [
     {"n": 1, "layer": "data", "files": ["supabase/migrations/0042_streak_freezes.sql"], "what": "adds streak_freezes and spend_freeze()"},
     {"n": 2, "layer": "logic", "files": ["app/stores/useStreakStore.ts", "supabase/functions/streak.ts"], "what": "spends a freeze through the RPC, keeps frozen days"},
@@ -208,10 +243,13 @@ Also: nightly streak_reset job → reset_streaks (12 changed lines)
 `flows` holds every flow, the diagrammed one first, then in `Also:` order. `group`
 numbers the groups from 1 in that order. `separate_things` is N, the count of things,
 when it is 3 or more, else `null`; `small_fixes` is K (0 or more) beside it, else
-`null`. `kind` is one of Step 2's kinds; `level` is `function|module`; `diagram` is
-`null` when there are no flows. The JSON `files` lists every path in full, unlike the
-text line. **v2**: flows gain `group`; `kind` gains `event` and `launch`;
-`changed_lines` counts Step 2's changed lines; `flows` lists every flow, in the order
-above. Added later, so older v2 files lack them: `small_fixes` (read `null`), emptied
-flows with `changed_lines: 0`, counting on `git diff -w` without blanks or comments,
-and serving by dependence.
+`null`. A flow's `kind` is one of Step 2's kinds; `level` is `function|module`;
+`diagram` is `null` when there are no flows. The diagram's own `kind` is Step 3's pick,
+`sequence|state|flowchart`: a `sequence` diagram keeps `participants`/`messages`;
+`state` and `flowchart` use `nodes`/`edges` instead. The JSON `files` lists every path
+in full, unlike the text line. **v2**: flows gain `group`; `kind` gains `event` and
+`launch`; `changed_lines` counts Step 2's changed lines; `flows` lists every flow, in
+the order above. Added later, so older v2 files lack them: `small_fixes` (read `null`),
+emptied flows with `changed_lines: 0`, counting on `git diff -w` without blanks or
+comments, and serving by dependence. **v3**: `diagram` gains `kind`. v2 files have no
+`kind` and are always `sequence`: readers must treat a missing `kind` as `sequence`.
