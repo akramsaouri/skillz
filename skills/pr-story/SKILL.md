@@ -107,10 +107,11 @@ that uses the name.
 - Score a flow by its **changed lines**, each once: the added plus removed lines of
   `git diff -w "$BASE" "$SHA"`, not counting blank or comment-only lines. Every count
   uses them: the size gate, Step 3's tie-break, `changed_lines`. A line **serves** a
-  flow when it is on that flow's traced call path. A line serving two flows scores in
-  the one with more categories (Step 3's test), then more changed lines, both counted
-  without shared lines. A refactor or speed-up with no behaviour change of its own
-  scores in the flow it serves, or in none, never as a flow of its own.
+  flow when that flow's behaviour change depends on what the line changes, not just
+  because the flow runs it: a fixed query bound serves the flow cut for that fix, not
+  every flow reading its rows. A line serving two flows scores in the one with more
+  categories (Step 3's test), then more changed lines, both without shared lines. A
+  pure refactor or speed-up serves the flows that run it, never a flow of its own.
 - A flow left with no lines of its own is **emptied**: it stays, with 0 changed lines,
   in the group of the flow that took most of its lines. It never makes a group a thing
   or a small fix, and is never diagrammed.
@@ -129,18 +130,18 @@ rename, import swap or signature change made elsewhere), a root, route table or 
 that only mounts, routes to or exports each piece, or an always-loaded instruction
 file (`CLAUDE.md`, `AGENTS.md`).
 
-A group is a **thing**, a review of its own, when its flows hold a sensitive category
-(Step 3's test) and ≥4 changed lines, or ≥20 changed lines; any other group is a small
-fix. With N ≥ 3 things, open the output (after the pin) with `This PR does N separate
+A group is a **thing**, a review of its own, when its scored lines hold a sensitive
+category (Step 3's test) and ≥4 changed lines, or ≥20; any other group is a small fix.
+With N ≥ 3 things, open the output (after the pin) with `This PR does N separate
 things.`, or with K small fixes, `This PR does N separate things, plus K small fixes.`
 
 ## Step 3 — Diagram the riskiest flow
 
 Draw one flow as one ```` ```mermaid ```` `sequenceDiagram`. Exactly one diagram per run.
 
-- Pick by risk, not size. Recompute pr-lanes' sensitive categories per flow, on that
-  flow's scored lines only, with pr-lanes' test: a line must alter the category, not
-  just read, render or memoize it. Most categories wins; changed lines break a tie.
+- Pick by risk, not size. Recompute pr-lanes' sensitive categories per flow over every
+  line serving it, shared or not, with pr-lanes' test: a line must alter the category,
+  not just read, render or memoize it. Most categories wins; changed lines break a tie.
 - At most about 8 participants and 15 messages. If the flow is bigger, draw it at
   module level: participants become modules or services, messages the calls between them.
 - Draw the changed hops, unchanged hops that connect two changed ones, the unchanged
@@ -212,4 +213,5 @@ when it is 3 or more, else `null`; `small_fixes` is K (0 or more) beside it, els
 text line. **v2**: flows gain `group`; `kind` gains `event` and `launch`;
 `changed_lines` counts Step 2's changed lines; `flows` lists every flow, in the order
 above. Added later, so older v2 files lack them: `small_fixes` (read `null`), emptied
-flows with `changed_lines: 0`, and counting on `git diff -w` without blanks or comments.
+flows with `changed_lines: 0`, counting on `git diff -w` without blanks or comments,
+and serving by dependence.
