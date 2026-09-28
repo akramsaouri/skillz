@@ -129,9 +129,9 @@ Test every lane against its trigger and tag each one that holds, in table order.
 
 | Lane | Fires when | Next |
 |---|---|---|
-| intent | the PR adds a capability (a new route, screen, endpoint, job, flag or public API), or makes a capability, user-visible behaviour, gate or breaking contract change (by `contract`'s test) its title and body never mention. Internals never count: PR templates often keep them out of the body. A fix or refactor alone is not intent | `/pr-intent` |
+| intent | the PR adds a capability (a new route, screen, endpoint, job, flag or public API) or makes a capability, user-visible behaviour, gate or breaking contract change (by `contract`'s test), and its title and body never mention it: a new job the title names doesn't fire. Only a change of its own fires it, never a detail a reader of the body would expect (a singular "1 day remaining" in a countdown the body describes). Internals never count: PR templates often keep them out of the body. A fix or refactor alone is not intent | `/pr-intent` |
 | structure | ≥3 areas besides `(root)`, ≥10 meaningful files besides tests, ≥3 new abstractions, or a move or refactor at scale | `/pr-story` |
-| behaviour | a user can notice it (UI, copy, navigation, notifications, errors the user sees, public API or CLI output), or it changes a gate | `/pr-behaviour` |
+| behaviour | a user can notice it (UI, copy, navigation, notifications, errors the user sees, public API or CLI output), including a sheet, toast or notification now shown a different number of times (a summary opening once per subscription change, not once per caller), or it changes a gate | `/pr-behaviour` |
 | understanding | `sensitive` is not empty, or the least familiar area has ≤2 commits | `/pr-check` |
 | remember | a recall hit reads `no`, the PR reverses a rule the repo writes down, or it writes down a new convention: a rule for code beyond its own lines, in `CLAUDE.md`, docs or a comment ("mount only from the bridge"), which fires this even in a Trust-class file. A comment explaining its own lines, or a decision that lives only in code, does not | `/pr-recall create` once merged |
 | trust | there are no meaningful files: every change is Trust-class | none |
