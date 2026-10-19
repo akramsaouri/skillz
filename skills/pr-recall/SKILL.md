@@ -76,7 +76,7 @@ through `lucidos data write` when it can, and never overwrites a store it cannot
 
 ```bash
 python3 <this-skill-dir>/store.py path                                             # exit 3 = no store
-python3 <this-skill-dir>/store.py overlap --repo <owner/repo> < "$T/pr.diff"       # cards this diff touches
+python3 <this-skill-dir>/store.py overlap --repo <owner/repo> < <T>/pr.diff       # cards this diff touches
 python3 <this-skill-dir>/store.py upsert --repo <owner/repo> --pr <n> < cards.json # replace this PR's cards
 ```
 
@@ -89,22 +89,22 @@ Input: a PR number in the current repo, `owner/repo#n`, or a PR URL. Pass it to
 bare number, `<owner/repo>` is `gh repo view --json nameWithOwner -q .nameWithOwner`.
 
 ```bash
-T=$(mktemp -d /tmp/pr-<n>.XXXXXX); echo "$T"   # one dir per run; reuse this path: shell variables die between tool calls
-gh pr view -R <owner/repo> <n> --json number,url,title,body,author,state,mergedAt,headRefName,headRefOid,baseRefOid,baseRefName,files,additions,deletions,closingIssuesReferences > "$T/pr.json"
-SHA=$(jq -r .headRefOid "$T/pr.json")   # resolve ONCE: FETCH_HEAD is overwritten by any later fetch
-gh pr diff -R <owner/repo> <n> > "$T/pr.diff"   # the net diff; --patch is a per-commit series that repeats files
-git fetch origin "refs/pull/<n>/head" "$(jq -r .baseRefName "$T/pr.json")"
-BASE=$(git merge-base "$(jq -r .baseRefOid "$T/pr.json")" "$SHA")   # the before-state
-git show "${SHA}:<path>"; git grep -n '<symbol>' "$SHA"   # read the head without checking it out
+mktemp -d /tmp/pr-<n>.XXXXXX   # prints <T>: one dir per run
+gh pr view -R <owner/repo> <n> --json number,url,title,body,author,state,mergedAt,headRefName,headRefOid,baseRefOid,baseRefName,files,additions,deletions,closingIssuesReferences > <T>/pr.json
+jq -r '.headRefOid, .baseRefOid, .baseRefName' <T>/pr.json   # prints <sha>, <base-oid>, <base-ref>; resolve ONCE: FETCH_HEAD is overwritten by any later fetch
+gh pr diff -R <owner/repo> <n> > <T>/pr.diff   # the net diff; --patch is a per-commit series that repeats files
+git fetch origin refs/pull/<n>/head <base-ref>
+git merge-base <base-oid> <sha>   # prints <base>: the before-state
+git show <sha>:<path>; git grep -n '<symbol>' <sha>   # read the head without checking it out
 ```
 
-- **zsh-safe.** Brace a SHA before a colon, `"${SHA}:<path>"` and `"${BASE}:<path>"`:
-  zsh reads `$SHA:h`, `:t`, `:r` and `:e` as modifiers (`hooks/x.ts` became `.ooks/x.ts`).
-  Pass each path as its own quoted word: zsh never splits an unquoted `$VAR` into words.
+- **Literals only.** No `$(...)`, backticks or variables: they die between tool calls, and
+  a permission guard refuses substitution. Run each command alone, read its output, and
+  paste the value into the next command as a literal (`<T>`, `<sha>`, `<base>` above).
 - `repo` in the JSON is `owner/name`, taken from the PR URL.
 - **Own PR**: `author.login` equals `gh api user -q .login`.
 - **Not cloned locally** (or `origin` is another repo): read files with
-  `gh api "repos/<owner/repo>/contents/<path>?ref=${SHA}" -H 'Accept: application/vnd.github.raw'`
+  `gh api "repos/<owner/repo>/contents/<path>?ref=<sha>" -H 'Accept: application/vnd.github.raw'`
   and history with `gh api "repos/<owner/repo>/commits?path=<path>"`.
 
 ## Create: `create <pr>`
@@ -120,7 +120,7 @@ it. Take it as given.
    `"status": "not_merged"`, and stop.
 2. Pick 1 to 3 facts that will matter the next time someone touches these files.
    Prefer what a later PR could silently undo (a decision, an invariant) over what is
-   merely new. Confirm each fact is true at `$SHA` by reading the line it rests on.
+   merely new. Confirm each fact is true at `<sha>` by reading the line it rests on.
    When nothing outlives the merge (a pure dependency bump, formatting), make no card
    and say why in one line: a junk card costs every future match.
 3. Pipe the cards, without `id`, to `store.py upsert`. It replaces any earlier cards for
@@ -146,10 +146,10 @@ it. Take it as given.
 **Budget:** at most 5 lines: `✗|?|✓ <kind> · #<pr> — <fact> — <why>`. The JSON
 carries every match.
 
-1. Acquire, then `store.py overlap --repo <repo> < "$T/pr.diff"`. It returns the
+1. Acquire, then `store.py overlap --repo <repo> < <T>/pr.diff`. It returns the
    cards whose `files` the diff touches or whose `symbols` appear on its changed
    lines, each with `via` saying which. A PR that only adds files matches by `symbols`.
-2. Read each card's fact against the diff at `$SHA` and set `still_true`:
+2. Read each card's fact against the diff at `<sha>` and set `still_true`:
    - **yes**: the PR leaves the fact intact, for instance it edits the file but not the
      part the fact is about.
    - **no**: the diff makes the fact false. `why` cites the line.

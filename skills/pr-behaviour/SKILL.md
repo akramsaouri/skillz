@@ -45,22 +45,22 @@ Input: a PR number in the current repo, `owner/repo#n`, or a PR URL. Pass it to
 bare number, `<owner/repo>` is `gh repo view --json nameWithOwner -q .nameWithOwner`.
 
 ```bash
-T=$(mktemp -d /tmp/pr-<n>.XXXXXX); echo "$T"   # one dir per run; reuse this path: shell variables die between tool calls
-gh pr view -R <owner/repo> <n> --json number,url,title,body,author,state,mergedAt,headRefName,headRefOid,baseRefOid,baseRefName,files,additions,deletions,closingIssuesReferences > "$T/pr.json"
-SHA=$(jq -r .headRefOid "$T/pr.json")   # resolve ONCE: FETCH_HEAD is overwritten by any later fetch
-gh pr diff -R <owner/repo> <n> > "$T/pr.diff"   # the net diff; --patch is a per-commit series that repeats files
-git fetch origin "refs/pull/<n>/head" "$(jq -r .baseRefName "$T/pr.json")"
-BASE=$(git merge-base "$(jq -r .baseRefOid "$T/pr.json")" "$SHA")   # the before-state
-git show "${SHA}:<path>"; git grep -n '<symbol>' "$SHA"   # read the head without checking it out
+mktemp -d /tmp/pr-<n>.XXXXXX   # prints <T>: one dir per run
+gh pr view -R <owner/repo> <n> --json number,url,title,body,author,state,mergedAt,headRefName,headRefOid,baseRefOid,baseRefName,files,additions,deletions,closingIssuesReferences > <T>/pr.json
+jq -r '.headRefOid, .baseRefOid, .baseRefName' <T>/pr.json   # prints <sha>, <base-oid>, <base-ref>; resolve ONCE: FETCH_HEAD is overwritten by any later fetch
+gh pr diff -R <owner/repo> <n> > <T>/pr.diff   # the net diff; --patch is a per-commit series that repeats files
+git fetch origin refs/pull/<n>/head <base-ref>
+git merge-base <base-oid> <sha>   # prints <base>: the before-state
+git show <sha>:<path>; git grep -n '<symbol>' <sha>   # read the head without checking it out
 ```
 
-- **zsh-safe.** Brace a SHA before a colon, `"${SHA}:<path>"` and `"${BASE}:<path>"`:
-  zsh reads `$SHA:h`, `:t`, `:r` and `:e` as modifiers (`hooks/x.ts` became `.ooks/x.ts`).
-  Pass each path as its own quoted word: zsh never splits an unquoted `$VAR` into words.
+- **Literals only.** No `$(...)`, backticks or variables: they die between tool calls, and
+  a permission guard refuses substitution. Run each command alone, read its output, and
+  paste the value into the next command as a literal (`<T>`, `<sha>`, `<base>` above).
 - `repo` in the JSON is `owner/name`, taken from the PR URL.
 - **Own PR**: `author.login` equals `gh api user -q .login`.
 - **Not cloned locally** (or `origin` is another repo): read files with
-  `gh api "repos/<owner/repo>/contents/<path>?ref=${SHA}" -H 'Accept: application/vnd.github.raw'`
+  `gh api "repos/<owner/repo>/contents/<path>?ref=<sha>" -H 'Accept: application/vnd.github.raw'`
   and history with `gh api "repos/<owner/repo>/commits?path=<path>"`.
 
 ## Step 1 — Find the user-visible changes
@@ -71,7 +71,7 @@ is reachable from where, notifications and emails, timing, permissions, the data
 (formatting, rounding, sort order), public API responses, CLI output. Refactors,
 logging and tests are internal.
 
-For each candidate, read both sides: `git show "${BASE}:<path>"` and `git show "${SHA}:<path>"`.
+For each candidate, read both sides: `git show <base>:<path>` and `git show <sha>:<path>`.
 A `+` line alone shows the after-state, not the change.
 
 Line: `<surface>: <before> → <after> (<file:line>)`, e.g.
@@ -80,7 +80,7 @@ Line: `<surface>: <before> → <after> (<file:line>)`, e.g.
 More than 5: keep the ones that reach the most users, and put the omitted count in
 `more`. None: print `No user-visible change.`
 
-Done when every changed UI, copy, API and CLI file was read at both `$BASE` and `$SHA`.
+Done when every changed UI, copy, API and CLI file was read at both `<base>` and `<sha>`.
 
 ## Screenshots: an optional hook
 
@@ -88,8 +88,8 @@ Capture needs a simulator or a browser, so it is the caller's job, never this sk
 The hook meets capture tooling halfway, in both directions:
 
 - **Out.** The JSON `capture` list names each visual surface and the state to shoot it
-  in, so a caller with tooling (a repo script, a Lucidos rail) can shoot `$BASE` and
-  `$SHA`. If the repo already carries capture tooling (Maestro flows, Playwright
+  in, so a caller with tooling (a repo script, a Lucidos rail) can shoot `<base>` and
+  `<sha>`. If the repo already carries capture tooling (Maestro flows, Playwright
   screenshots, fastlane snapshot, a `*screenshot*` script), name it in `capture_tool`.
 - **In.** `--shots '<json>'` takes `[{"surface", "before", "after"}]` image paths or URLs
   from that caller. Each pair attaches to the change with the same surface. Before and
