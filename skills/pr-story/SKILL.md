@@ -169,7 +169,27 @@ Draw one flow as one Mermaid diagram: `sequenceDiagram`, `stateDiagram-v2`, or
 - **flowchart TD**, at most about 12 nodes. Decision points are `{...}` nodes; tag a
   new, changed or removed branch the same way, on the edge label or the node text.
 - All three: bare ids; message, transition and node text stay free of `;` and `#`,
-  which break parsing, and of `file:line` citations.
+  which break parsing, and of `file:line` citations. Plain words, no HTML: Pele draws
+  text as SVG and drops a tag with its text (`Promise<User>` shows `Promise`); `<br>`
+  breaks a line.
+
+**Check the draft with Pele**, which draws it in the Pulls app, before any output.
+Write it to `"$T/diagram.mmd"` and run:
+
+```bash
+node <this-skill-dir>/scripts/check-diagram.mjs "$T/diagram.mmd"
+```
+
+- Exit 0 prints `ok: <type>`, which must be the kind you picked. The checked file goes
+  unchanged into the text and into `diagram.mermaid`.
+- Exit 1 names the problem and its line. Fix only that, keeping what the diagram says,
+  and run it again: at most 3 drafts.
+- Exit 3: pele is not installed. Run the `npm ci` line it prints, once, then the check.
+  That install, into this skill's own `node_modules`, and `node` running the check are
+  the only exceptions to the Read-only rule.
+- No draft passes in 3, or the check cannot run (no Node 20+, the install fails): no
+  diagram ships. In its place put `No diagram: <the check's first error line>`, cut to
+  140 characters; `diagram` is `null` and no flow is `diagrammed`.
 
 Under the diagram, one line per other flow: every thing's top flow, then emptied flows,
 then the rest, each part by risk then changed lines. At most 5, then `+N more flows`:
@@ -244,12 +264,14 @@ stateDiagram-v2
 numbers the groups from 1 in that order. `separate_things` is N, the count of things,
 when it is 3 or more, else `null`; `small_fixes` is K (0 or more) beside it, else
 `null`. A flow's `kind` is one of Step 2's kinds; `level` is `function|module`;
-`diagram` is `null` when there are no flows. The diagram's own `kind` is Step 3's pick,
-`sequence|state|flowchart`: a `sequence` diagram keeps `participants`/`messages`;
-`state` and `flowchart` use `nodes`/`edges` instead. The JSON `files` lists every path
-in full, unlike the text line. **v2**: flows gain `group`; `kind` gains `event` and
-`launch`; `changed_lines` counts Step 2's changed lines; `flows` lists every flow, in
-the order above. Added later, so older v2 files lack them: `small_fixes` (read `null`),
-emptied flows with `changed_lines: 0`, counting on `git diff -w` without blanks or
-comments, and serving by dependence. **v3**: `diagram` gains `kind`. v2 files have no
-`kind` and are always `sequence`: readers must treat a missing `kind` as `sequence`.
+`diagram` is `null` when there are no flows, or when no draft passed Step 3's check.
+The diagram's own `kind` is Step 3's pick, `sequence|state|flowchart`: a `sequence`
+diagram keeps `participants`/`messages`; `state` and `flowchart` use `nodes`/`edges`
+instead. The JSON `files` lists every path in full, unlike the text line. **v2**: flows
+gain `group`; `kind` gains `event` and `launch`; `changed_lines` counts Step 2's
+changed lines; `flows` lists every flow, in the order above. Added later, so older v2
+files lack them: `small_fixes` (read `null`), emptied flows with `changed_lines: 0`,
+counting on `git diff -w` without blanks or comments, and serving by dependence.
+**v3**: `diagram` gains `kind`. v2 files have no `kind` and are always `sequence`:
+readers must treat a missing `kind` as `sequence`. Added later: a `null` `diagram`
+beside flows, when no draft passed the check.
