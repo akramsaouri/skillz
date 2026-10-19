@@ -100,15 +100,42 @@ belongs to the one around it, and outside any function the changed hunk stands i
 Imports and module-level constants and types are never one: they score with the flow
 that uses the name.
 
-- One flow per entry action: changes reached from the same entry through the same
-  changed function are one flow, and so are callers reaching the change only through
-  one changed shared module (a hook, store, util, component). Its entry and `kind` come
-  from what really triggers it: a tap in the screens using the module is `screen`. A
-  sub-component its screen always mounts shares the screen's entry: one flow, unless
-  the user can reach it on its own entry (a separate route, a deep link or a trigger),
-  which makes it a flow of its own.
+- **One flow per top changed function**, never one per caller. A top is a changed
+  function that no other changed function calls (in a cycle, the first by path); every
+  changed function it calls joins its flow, and however many callers reach it, it stays
+  one flow. Two tops are two flows, even from one tap. Counts: nine screens calling
+  three changed store functions are 3 flows; a changed `onSave` calling a changed
+  `saveStreak` is one flow, `onSave`'s, since `saveStreak` has a changed caller.
+  Doesn't: 9 flows, one per screen, or `saveStreak` as a second flow.
+- **Entry.** The flow's `entry` is what runs its top function: `<Screen>: <action>`
+  for a screen (`StreakScreen: tap Use freeze`, `StreakScreen: opens`), else the route,
+  command or callback by name (`nightly streak_reset job`). When its callers disagree,
+  take the first by `kind` in the order above, then by path, then by line; the rest add
+  nothing. A tap on a control, even in a sub-component its screen always mounts, is an
+  action on that screen and never a trigger of its own: it names the entry and never
+  splits or adds a flow, the changed function does. A sub-component has an entry of its
+  own only when the user can reach it without the screen: a route of its own, a deep
+  link, a notification. Counts: taps on `ConsistencyCard` and on the header both call
+  the changed `refresh`: one flow, `StreakScreen: tap consistency card` if that
+  caller's path sorts first. Doesn't: a second flow `ConsistencyCard: tap` for that
+  `refresh`. A card handler that is itself changed and has no changed caller is a
+  second top, so a second flow, still entered under `StreakScreen`.
+- **Kind**, from what makes the top function run. A callback fired by something other
+  than a person on the screen (an SDK, a realtime message, a push, an OS lifecycle
+  hook, an in-app EventBus) is `event`, entered at the callback: the walk stops at the
+  bus, never on to whoever emits. A person acting on or opening a screen (a tap, a
+  submit, navigating there, its mount effect, a passive render, a DOM or page load of
+  a route) is `screen`, entered `<Screen>: opens` when nothing is tapped. App start
+  with no screen (a mount effect in the root layout or a provider, the root document's
+  bootstrap) is `launch`. A schedule or queue with nobody present (cron, pg_cron, a
+  worker, an OS background task) is `job`. Counts: `StreakScreen` loading on mount is
+  `screen`; the root layout's push-token effect is `launch`; the `onDone` callback of
+  a `workout:done` bus event is `event`; `reset_streaks` on pg_cron is `job`. Doesn't:
+  a mount effect that only subscribes (its callback is the `event`); a `setInterval` a
+  mounted screen starts (the screen's flow, not a `job`).
 - A moved registration (a listener, a subscription, a bridge holding one) is one flow,
-  entered at the callback where its effect is observed, not where it is registered.
+  entered at the callback where its effect is observed, not where it is registered:
+  its `kind` is the callback's.
 - Score a flow by its **changed lines**, each once: the added plus removed lines of
   `git diff -w <base> <sha>`, not counting blank or comment-only lines (in a markdown
   or skill file: fence delimiters, headings, `#` comments inside a fenced shell
@@ -118,8 +145,27 @@ that uses the name.
   changes, not just because the flow runs it: a fixed query bound serves the flow cut
   for that fix, not every flow reading its rows. A line serving two flows scores in
   the one with more categories (Step 3's test), then more changed lines, both without
-  shared lines. A pure refactor or speed-up serves the flows that run it, never a flow
-  of its own.
+  shared lines.
+- **A migration restating a SQL function** (`create or replace function`, or a drop
+  and create) scores only the lines that differ from that name's previous definition,
+  never the restated body. Find the previous one at `<base>`: the snapshot of the
+  schema's functions the repo keeps (a `pgprocedures` file, `supabase/schemas/`), else
+  the highest-named earlier migration defining it: `git grep -n -i -w
+  'function.*<name>' <base> -- '*.sql'` lists both. Write each body to `<T>/old.sql`
+  and `<T>/new.sql` and run `git diff --no-index -w -U0 <T>/old.sql <T>/new.sql`
+  (it exits 1 when they differ): the changed lines it prints, not its file headers and
+  not blanks or comments, are the score. With no previous definition the function is
+  new and its whole body counts; the migration's other statements count in full.
+  Counts: `0043_streak_fix.sql` restates the 300-line `spend_freeze`, and 12 lines
+  differ from `0042`'s: 12. Doesn't: 300, or lines that only changed indentation.
+- **A pure refactor** (every caller sees the same returns, writes, navigations and
+  throws; the code is only cleaner or faster) never cuts a flow. Its lines serve the
+  flows that other lines cut and that run it, placed by the rule above; the rest sit
+  in no flow, and a PR of nothing else has no flows (below). Counts: extracting
+  `computeStreak` from `spendFreeze` with the same results, in a PR whose new RPC call
+  cuts the `spendFreeze` flow: the extracted lines score there. Doesn't: a "refactor"
+  after which a caller sees another write, throw or order. That is a behaviour change
+  and cuts a flow like any other.
 - A flow left with no lines of its own is **emptied**: it stays, with 0 changed lines,
   in the group of the flow that took most of its lines. It never makes a group a thing
   or a small fix, and is never diagrammed.
@@ -134,10 +180,12 @@ that uses the name.
   on a staged promote, a new stop condition. These don't: reviewer-prompt wording, a
   message-only hook edit, splitting a command into separate Bash calls.
 
-Nothing that runs reaches changed code (docs or slash-command markdown only, config,
-renames, dependency bumps, comment-only trims, removing an export that `git grep -n
-'<name>' <base>` finds in no other file): no flows, so skip Step 3 and output only the
-file list.
+Nothing that runs changes behaviour (docs or slash-command markdown only, config,
+renames, dependency bumps, comment-only trims, a pure refactor, dead code: a function
+no caller reaches, or removing an export that `git grep -n '<name>' <base>` finds in no
+other file): no flows, so skip Step 3 and output only the file list, with `flows` `[]`
+and `diagram` `null`. A refactor or dead-code PR is this case, not one flow per caller
+or per touched function.
 
 **Groups.** Two flows share a group when one changed function holds lines scored in
 each, or when changed lines in each call the same function the diff adds or changes.
@@ -164,16 +212,38 @@ Draw one flow as one Mermaid diagram: `sequenceDiagram`, `stateDiagram-v2`, or
   "Sensitive" signal, `<this-skill-dir>/../pr-lanes/SKILL.md`) per flow over every line
   serving it, shared or not, with pr-lanes' test: a line must alter the category, not
   just read, render or memoize it; for `gate`, that is Step 2's gate-changing line.
-  Most categories wins; changed lines break a tie.
-- Pick the kind to fit the flow, not the flow to fit a kind. `sequenceDiagram`
-  (default): the risk is in who calls whom and in what order across components or
-  services — store → RPC → table, request/response, an async hop. `stateDiagram-v2`:
-  the risk is in the states and transitions of one thing (a timer, a sheet or keypad
-  open/closed, a subscription, a workout lifecycle), and which transitions were added,
-  changed or removed matters more than call order. `flowchart TD`: the risk is
-  branching logic in one place — guards, feature flags, fallbacks, validation paths.
-  Top-down only (`TD`), so it stays narrow on a phone. Unsure which fits: draw
-  `sequenceDiagram`.
+  A line takes at most one of `gate`, `concurrency` and `contract`, the first that
+  holds in that order: `gate` has its own test, `concurrency` is a mechanism, and
+  `contract` is the catch-all. Counts: a new stop condition in an auto-merge script is
+  `gate`, not `contract`, though its callers see a new exit; a lock around
+  `spend_freeze` that makes a second call wait or fail is `concurrency`, not
+  `contract`, though callers see a new error; `getStreak` returning `{days}` where
+  callers outside the diff read a number is `contract`. Doesn't: a banner that only
+  shows whether `SKIP_REVIEW` is set, a lock variable renamed: none of the three.
+  Most categories wins, then changed lines, then the flow holding the category that
+  comes first in `auth`, `money`, `data`, `security`, `gate`, `concurrency`,
+  `contract`, then the entry that sorts first alphabetically. Counts: two flows of 8
+  lines, one `concurrency` and one `contract`: the `concurrency` flow. Doesn't: a
+  40-line flow of one category over an 8-line flow of two.
+- Pick the kind to fit the flow, not the flow to fit a kind: the first of these tests
+  that holds for the changed lines of the riskiest flow.
+  1. `stateDiagram-v2`: the code names at least two states of one thing (enum or
+     union members, flag values, reducer cases: a timer, a sheet or keypad open or
+     closed, a subscription, a workout lifecycle) and a changed line adds, removes or
+     re-targets a transition between them. Which transitions changed matters more
+     than call order. A loading flag toggled around a call is not a state machine.
+  2. `flowchart TD`: every changed line sits in one function and is a guard, feature
+     flag, fallback, validation or early return, and no hop is added, removed or
+     reordered. A hop is a call that crosses a file or a process: another file's
+     function, an RPC, a query, a request; reading a flag, config or constant isn't one.
+  3. `sequenceDiagram`, otherwise: the risk is who calls whom and in what order across
+     components or services (store → RPC → table, request/response, an async hop).
+  Counts: a rest sheet that gains a Hidden → Visible → KeypadOpen transition is 1; a
+  `canExport` in one file that gains an entitlement guard with a free-path fallback is
+  2; a `spendFreeze` that now calls an RPC is 3. Doesn't: that `canExport` guard when
+  the PR also adds the `check_entitlement` RPC it calls (a hop was added: 3), nor an
+  `isSaving` flag set around that RPC (a loading flag: 3). Never fall back to a kind
+  by feel. Top-down only (`TD`), so a flowchart stays narrow on a phone.
 - **sequenceDiagram**, at most about 8 participants and 15 messages. If the flow is
   bigger, draw it at module level: participants become modules or services, messages
   the calls between them. Draw the changed hops, unchanged hops that connect two
@@ -205,8 +275,12 @@ Write it to `<T>/diagram.mmd` and run:
 node <this-skill-dir>/scripts/check-diagram.mjs <T>/diagram.mmd
 ```
 
-- Exit 0 prints `ok: <type>`, which must be the kind you picked. The checked file goes
-  unchanged into the text and into `diagram.mermaid`.
+- **A pass is read from stdout, not from `$?`** (a variable, so banned): stdout starts
+  with `ok: ` and the word after it equals the kind you picked, which is the
+  `diagram.kind` you write: `ok: sequence`, `ok: state` or `ok: flowchart`. An empty
+  stdout, an error on stderr, or an `ok:` with another kind is no pass, and counts as a
+  draft: redraw it as the kind you picked. The checked file goes unchanged into the
+  text and into `diagram.mermaid`.
 - Exit 1 names the problem and its line. Fix only that, keeping what the diagram says,
   and run it again: at most 3 drafts.
 - Exit 3: pele is not installed. Run the `npm ci` line it prints, once, then the check.
@@ -240,16 +314,16 @@ of truth: fix the JSON.
 pr-zone/przone-app#971 @ 3f9c2ab
 ```mermaid
 sequenceDiagram
-  participant FS as FreezeSheet [unchanged]
+  participant SC as StreakScreen [unchanged]
   participant ST as useStreakStore
   participant RPC as spend_freeze
   participant DB as streak_freezes
-  FS->>ST: spendFreeze(day)
+  SC->>ST: spendFreeze(day)
   ST->>RPC: rpc spend_freeze(day) [new]
   RPC->>DB: insert freeze row [new]
   ST-xDB: update the freeze count from the client [removed]
   RPC-->>ST: streak with frozen day [changed]
-  ST-->>FS: re-render streak [changed]
+  ST-->>SC: re-render streak [changed]
 ```
 Also: nightly streak_reset job → reset_streaks (12 changed lines)
 1. data — 0042_streak_freezes.sql — adds streak_freezes and spend_freeze()
@@ -282,10 +356,10 @@ stateDiagram-v2
   "generated_at": "2026-09-27T09:14:00Z",
   "separate_things": null, "small_fixes": null,
   "flows": [
-    {"entry": "FreezeSheet: tap Use freeze", "kind": "screen", "group": 1, "changed_lines": 142, "diagrammed": true},
+    {"entry": "StreakScreen: tap Use freeze", "kind": "screen", "group": 1, "changed_lines": 142, "diagrammed": true},
     {"entry": "nightly streak_reset job", "kind": "job", "group": 2, "changed_lines": 12, "diagrammed": false}
   ],
-  "diagram": {"kind": "sequence", "level": "function", "participants": 4, "messages": 6, "mermaid": "sequenceDiagram\n  participant FS as FreezeSheet [unchanged]\n  ..."},
+  "diagram": {"kind": "sequence", "level": "function", "participants": 4, "messages": 6, "mermaid": "sequenceDiagram\n  participant SC as StreakScreen [unchanged]\n  ..."},
   "steps": [
     {"n": 1, "layer": "data", "files": ["supabase/migrations/0042_streak_freezes.sql"], "what": "adds streak_freezes and spend_freeze()"},
     {"n": 2, "layer": "logic", "files": ["app/stores/useStreakStore.ts", "supabase/functions/streak.ts"], "what": "spends a freeze through the RPC, keeps frozen days"},
@@ -304,11 +378,12 @@ when it is 3 or more, else `null`; `small_fixes` is K (0 or more) beside it, els
 `module` when any participant is a file, script, workflow, package or service taken as
 a whole, as in Step 3's redraw of a flow past 8 participants or 15 messages; `function`
 when each is a symbol (function, hook, component, store, RPC) or a table, and for
-every `state` and `flowchart` diagram. `diagram` is `null` when there are no flows, or
+every `state` and `flowchart` diagram. With no flows, `flows` is `[]`, `diagram` is
+`null` and `separate_things` and `small_fixes` are `null`; `diagram` is also `null`
 when no draft passed Step 3's check.
-The diagram's own `kind` is Step 3's pick, `sequence|state|flowchart`: a `sequence`
-diagram keeps `participants`/`messages`; `state` and `flowchart` use `nodes`/`edges`
-instead. The JSON `files` lists every path in full, unlike the text line. **v2**: flows
+The diagram's own `kind` is Step 3's pick, `sequence|state|flowchart`, and is the word
+after `ok: ` in the check's passing output: a `sequence` diagram keeps
+`participants`/`messages`; `state` and `flowchart` use `nodes`/`edges` instead. The JSON `files` lists every path in full, unlike the text line. **v2**: flows
 gain `group`; `kind` gains `event` and `launch`; `changed_lines` counts Step 2's
 changed lines; `flows` lists every flow, in the order above. Added later, so older v2
 files lack them: `small_fixes` (read `null`), emptied flows with `changed_lines: 0`,
