@@ -24,9 +24,9 @@ that carries the most risk.
   branch changes. No browser, database or running service, not even a read-only
   `SELECT`: no `psql`, no local Supabase or Docker stack. Read with `gh pr view|diff`,
   `gh issue view`, `gh api` GETs, `git fetch` (it adds objects, moves no branch),
-  `git show|log|diff|grep|blame|ls-tree|merge-base|config`, `jq`, `mktemp`, `wc` and
-  pr-recall's `python3 store.py`. Scratch files go under `/tmp`; pr-recall's card store
-  is the only thing any pr-* skill writes.
+  `git show|log|diff|grep|blame|ls-tree|merge-base|config`, `jq`, `mktemp`, `wc`, `date`
+  and pr-recall's `python3 store.py`. Scratch files go under `/tmp`; pr-recall's card
+  store is the only thing any pr-* skill writes.
 - **Budgeted.** The budget is a ceiling, not a target: cut to fit. A line stays one
   line, never sub-bullets or a continuation. Each free-text field (a reason, question,
   claim, fact, correction) is at most 140 characters, in the text and in the JSON.
@@ -54,6 +54,7 @@ gh pr diff -R <owner/repo> <n> > <T>/pr.diff   # the net diff; --patch is a per-
 git fetch origin refs/pull/<n>/head <base-ref>
 git merge-base <base-oid> <sha>   # prints <base>: the before-state
 git show <sha>:<path>; git grep -n '<symbol>' <sha>   # read the head without checking it out
+date -u +%Y-%m-%dT%H:%M:%SZ   # prints <now>: the JSON generated_at; run it last, just before writing the JSON
 ```
 
 - **Literals only.** No `$(...)`, backticks or variables: they die between tool calls, and
@@ -102,29 +103,46 @@ that uses the name.
 - One flow per entry action: changes reached from the same entry through the same
   changed function are one flow, and so are callers reaching the change only through
   one changed shared module (a hook, store, util, component). Its entry and `kind` come
-  from what really triggers it: a tap in the screens using the module is `screen`.
+  from what really triggers it: a tap in the screens using the module is `screen`. A
+  sub-component its screen always mounts shares the screen's entry: one flow, unless
+  the user can reach it on its own entry (a separate route, a deep link or a trigger),
+  which makes it a flow of its own.
 - A moved registration (a listener, a subscription, a bridge holding one) is one flow,
   entered at the callback where its effect is observed, not where it is registered.
 - Score a flow by its **changed lines**, each once: the added plus removed lines of
-  `git diff -w <base> <sha>`, not counting blank or comment-only lines. Every count
-  uses them: the size gate, Step 3's tie-break, `changed_lines`. A line **serves** a
-  flow when that flow's behaviour change depends on what the line changes, not just
-  because the flow runs it: a fixed query bound serves the flow cut for that fix, not
-  every flow reading its rows. A line serving two flows scores in the one with more
-  categories (Step 3's test), then more changed lines, both without shared lines. A
-  pure refactor or speed-up serves the flows that run it, never a flow of its own.
+  `git diff -w <base> <sha>`, not counting blank or comment-only lines (in a markdown
+  or skill file: fence delimiters, headings, `#` comments inside a fenced shell
+  snippet, and a prose line that is only reworded, so it gives the same instruction as
+  before). Every count uses them: the size gate, Step 3's tie-break, `changed_lines`.
+  A line **serves** a flow when that flow's behaviour change depends on what the line
+  changes, not just because the flow runs it: a fixed query bound serves the flow cut
+  for that fix, not every flow reading its rows. A line serving two flows scores in
+  the one with more categories (Step 3's test), then more changed lines, both without
+  shared lines. A pure refactor or speed-up serves the flows that run it, never a flow
+  of its own.
 - A flow left with no lines of its own is **emptied**: it stays, with 0 changed lines,
   in the group of the flow that took most of its lines. It never makes a group a thing
   or a small fix, and is never diagrammed.
 - In no flow: Trust-class files and tests. Agent markdown (a skill, a slash command,
   `CLAUDE.md`) joins a flow only through its gate-changing lines, starting at what runs
   them: only those lines score, and only their categories count.
+- A line is **gate-changing** (pr-lanes' `gate`) when it alters whether, when or by
+  whom a review, merge, auto-merge, release or CI skip may happen: in code, or in an
+  agent prompt, skill or hook by changing what the agent or script may or must do at
+  that gate, never by rewording or reporting it differently. These count: a change to
+  `SKIP_REVIEW` pushes, auto-merging a PR, a release landing via a PR, skipping a step
+  on a staged promote, a new stop condition. These don't: reviewer-prompt wording, a
+  message-only hook edit, splitting a command into separate Bash calls.
 
 Nothing that runs reaches changed code (docs or slash-command markdown only, config,
-renames, dependency bumps): no flows, so skip Step 3 and output only the file list.
+renames, dependency bumps, comment-only trims, removing an export that `git grep -n
+'<name>' <base>` finds in no other file): no flows, so skip Step 3 and output only the
+file list.
 
 **Groups.** Two flows share a group when one changed function holds lines scored in
 each, or when changed lines in each call the same function the diff adds or changes.
+A command line that triggers a hook (`git push` running `require-review-before-push.sh`)
+calls it only when the diff changes the hook's logic, not just its messages.
 A function the PR deletes or splits counts as changed: its pieces are read against it.
 Never joined by: a shared file alone, a mechanical call-site edit (it only follows a
 rename, import swap or signature change made elsewhere), a root, route table or index
@@ -134,17 +152,19 @@ file (`CLAUDE.md`, `AGENTS.md`).
 A group is a **thing**, a review of its own, when its scored lines hold a sensitive
 category (Step 3's test) and ≥4 changed lines, or ≥20; any other group is a small fix.
 With N ≥ 3 things, open the output (after the pin) with `This PR does N separate
-things.`, or with K small fixes, `This PR does N separate things, plus K small fixes.`
+things.`, or with K ≥ 1 small fixes, `This PR does N separate things, plus K small
+fixes.` K = 1 reads `plus 1 small fix.`; N is never below 3, so `things` stays plural.
 
 ## Step 3 — Diagram the riskiest flow
 
 Draw one flow as one Mermaid diagram: `sequenceDiagram`, `stateDiagram-v2`, or
 `flowchart TD`. Exactly one diagram per run.
 
-- Pick the flow by risk, not size. Recompute pr-lanes' sensitive categories per flow
-  over every line serving it, shared or not, with pr-lanes' test: a line must alter the
-  category, not just read, render or memoize it. Most categories wins; changed lines
-  break a tie.
+- Pick the flow by risk, not size. Recompute pr-lanes' sensitive categories (its
+  "Sensitive" signal, `<this-skill-dir>/../pr-lanes/SKILL.md`) per flow over every line
+  serving it, shared or not, with pr-lanes' test: a line must alter the category, not
+  just read, render or memoize it; for `gate`, that is Step 2's gate-changing line.
+  Most categories wins; changed lines break a tie.
 - Pick the kind to fit the flow, not the flow to fit a kind. `sequenceDiagram`
   (default): the risk is in who calls whom and in what order across components or
   services — store → RPC → table, request/response, an async hop. `stateDiagram-v2`:
@@ -161,17 +181,22 @@ Draw one flow as one Mermaid diagram: `sequenceDiagram`, `stateDiagram-v2`, or
   the risk lands (the table a change locks, the service it calls). End a new hop's text
   with ` [new]` and a changed hop's with ` [changed]`. Draw a hop the PR removes with
   `-x`, ending ` [removed]`. End every unchanged participant's label with
-  ` [unchanged]`. Docs are never a participant. Participant ids are bare identifiers
-  (`participant SS as StreakService`).
+  ` [unchanged]`. A participant whose file only had a message or string edit is
+  unchanged too: keep it only where the unchanged-hop rule above needs it, else drop
+  it. Docs are never a participant. Participant ids are bare identifiers
+  (`participant SS as StreakService`), never a Mermaid keyword (`and`, `end`, `alt`,
+  `opt`, `loop`, `par`, `note`, `rect`, `box`, `over`, …): alias it, so a participant
+  named `end` is `participant EN as end`.
 - **stateDiagram-v2**, at most about 8 states and 12 transitions. States are bare ids
   with a label, `state "Open" as Open`. End a new transition's label with ` [new]`, a
   changed one's with ` [changed]`, a removed one's with ` [removed]`.
 - **flowchart TD**, at most about 12 nodes. Decision points are `{...}` nodes; tag a
   new, changed or removed branch the same way, on the edge label or the node text.
-- All three: bare ids; message, transition and node text stay free of `;` and `#`,
-  which break parsing, and of `file:line` citations. Plain words, no HTML: Pele draws
-  text as SVG and drops a tag with its text (`Promise<User>` shows `Promise`); `<br>`
-  breaks a line.
+- All three: bare ids, never Mermaid keywords (`end` breaks a flowchart node, `note` a
+  state: pick another id, the name goes in the label); message, transition and node
+  text stay free of `;` and `#`, which break parsing, and of `file:line` citations.
+  Plain words, no HTML: Pele draws text as SVG and drops a tag with its text
+  (`Promise<User>` shows `Promise`); `<br>` breaks a line.
 
 **Check the draft with Pele**, which draws it in the Pulls app, before any output.
 Write it to `<T>/diagram.mmd` and run:
@@ -271,11 +296,16 @@ stateDiagram-v2
 }
 ```
 
+`generated_at` is `<now>`, printed by Acquire's `date` line and pasted as a literal.
 `flows` holds every flow, the diagrammed one first, then in `Also:` order. `group`
 numbers the groups from 1 in that order. `separate_things` is N, the count of things,
 when it is 3 or more, else `null`; `small_fixes` is K (0 or more) beside it, else
-`null`. A flow's `kind` is one of Step 2's kinds; `level` is `function|module`;
-`diagram` is `null` when there are no flows, or when no draft passed Step 3's check.
+`null`. A flow's `kind` is one of Step 2's kinds. `level` is `function|module`:
+`module` when any participant is a file, script, workflow, package or service taken as
+a whole, as in Step 3's redraw of a flow past 8 participants or 15 messages; `function`
+when each is a symbol (function, hook, component, store, RPC) or a table, and for
+every `state` and `flowchart` diagram. `diagram` is `null` when there are no flows, or
+when no draft passed Step 3's check.
 The diagram's own `kind` is Step 3's pick, `sequence|state|flowchart`: a `sequence`
 diagram keeps `participants`/`messages`; `state` and `flowchart` use `nodes`/`edges`
 instead. The JSON `files` lists every path in full, unlike the text line. **v2**: flows
