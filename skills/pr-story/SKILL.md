@@ -47,22 +47,22 @@ Input: a PR number in the current repo, `owner/repo#n`, or a PR URL. Pass it to
 bare number, `<owner/repo>` is `gh repo view --json nameWithOwner -q .nameWithOwner`.
 
 ```bash
-T=$(mktemp -d /tmp/pr-<n>.XXXXXX); echo "$T"   # one dir per run; reuse this path: shell variables die between tool calls
-gh pr view -R <owner/repo> <n> --json number,url,title,body,author,state,mergedAt,headRefName,headRefOid,baseRefOid,baseRefName,files,additions,deletions,closingIssuesReferences > "$T/pr.json"
-SHA=$(jq -r .headRefOid "$T/pr.json")   # resolve ONCE: FETCH_HEAD is overwritten by any later fetch
-gh pr diff -R <owner/repo> <n> > "$T/pr.diff"   # the net diff; --patch is a per-commit series that repeats files
-git fetch origin "refs/pull/<n>/head" "$(jq -r .baseRefName "$T/pr.json")"
-BASE=$(git merge-base "$(jq -r .baseRefOid "$T/pr.json")" "$SHA")   # the before-state
-git show "${SHA}:<path>"; git grep -n '<symbol>' "$SHA"   # read the head without checking it out
+mktemp -d /tmp/pr-<n>.XXXXXX   # prints <T>: one dir per run
+gh pr view -R <owner/repo> <n> --json number,url,title,body,author,state,mergedAt,headRefName,headRefOid,baseRefOid,baseRefName,files,additions,deletions,closingIssuesReferences > <T>/pr.json
+jq -r '.headRefOid, .baseRefOid, .baseRefName' <T>/pr.json   # prints <sha>, <base-oid>, <base-ref>; resolve ONCE: FETCH_HEAD is overwritten by any later fetch
+gh pr diff -R <owner/repo> <n> > <T>/pr.diff   # the net diff; --patch is a per-commit series that repeats files
+git fetch origin refs/pull/<n>/head <base-ref>
+git merge-base <base-oid> <sha>   # prints <base>: the before-state
+git show <sha>:<path>; git grep -n '<symbol>' <sha>   # read the head without checking it out
 ```
 
-- **zsh-safe.** Brace a SHA before a colon, `"${SHA}:<path>"` and `"${BASE}:<path>"`:
-  zsh reads `$SHA:h`, `:t`, `:r` and `:e` as modifiers (`hooks/x.ts` became `.ooks/x.ts`).
-  Pass each path as its own quoted word: zsh never splits an unquoted `$VAR` into words.
+- **Literals only.** No `$(...)`, backticks or variables: they die between tool calls, and
+  a permission guard refuses substitution. Run each command alone, read its output, and
+  paste the value into the next command as a literal (`<T>`, `<sha>`, `<base>` above).
 - `repo` in the JSON is `owner/name`, taken from the PR URL.
 - **Own PR**: `author.login` equals `gh api user -q .login`.
 - **Not cloned locally** (or `origin` is another repo): read files with
-  `gh api "repos/<owner/repo>/contents/<path>?ref=${SHA}" -H 'Accept: application/vnd.github.raw'`
+  `gh api "repos/<owner/repo>/contents/<path>?ref=<sha>" -H 'Accept: application/vnd.github.raw'`
   and history with `gh api "repos/<owner/repo>/commits?path=<path>"`.
 
 ## Step 1 — Order the files
@@ -92,7 +92,7 @@ A **flow** is one distinct behaviour change, traced from the entry point that ru
 through the changed code. Its `kind` names that entry: `screen` (a screen action),
 `endpoint`, `job`, `cli` (a CLI or slash command), `webhook`, `event` (an SDK, realtime
 or OS callback), `launch` (app start, a root mount effect), else `other` (a git or
-agent hook). Walk each changed function's callers up (`git grep -n '<name>' "$SHA"`).
+agent hook). Walk each changed function's callers up (`git grep -n '<name>' <sha>`).
 A **changed function** is the innermost named function around a changed line (a
 declaration, a method, `const onSave = …`); an inline callback, such as an effect body,
 belongs to the one around it, and outside any function the changed hunk stands in.
@@ -106,7 +106,7 @@ that uses the name.
 - A moved registration (a listener, a subscription, a bridge holding one) is one flow,
   entered at the callback where its effect is observed, not where it is registered.
 - Score a flow by its **changed lines**, each once: the added plus removed lines of
-  `git diff -w "$BASE" "$SHA"`, not counting blank or comment-only lines. Every count
+  `git diff -w <base> <sha>`, not counting blank or comment-only lines. Every count
   uses them: the size gate, Step 3's tie-break, `changed_lines`. A line **serves** a
   flow when that flow's behaviour change depends on what the line changes, not just
   because the flow runs it: a fixed query bound serves the flow cut for that fix, not
@@ -174,10 +174,10 @@ Draw one flow as one Mermaid diagram: `sequenceDiagram`, `stateDiagram-v2`, or
   breaks a line.
 
 **Check the draft with Pele**, which draws it in the Pulls app, before any output.
-Write it to `"$T/diagram.mmd"` and run:
+Write it to `<T>/diagram.mmd` and run:
 
 ```bash
-node <this-skill-dir>/scripts/check-diagram.mjs "$T/diagram.mmd"
+node <this-skill-dir>/scripts/check-diagram.mjs <T>/diagram.mmd
 ```
 
 - Exit 0 prints `ok: <type>`, which must be the kind you picked. The checked file goes
@@ -198,7 +198,18 @@ for an emptied flow.
 
 ## Output
 
-Order: pin, the "separate things" opener if any, the diagram, the `Also:` lines, the steps.
+Your final reply is two parts, in this order, both mandatory. Type them yourself: a
+file, or JSON built with `jq` or a script, is not the block.
+
+1. **The text**: the pin, the "separate things" opener if any, the diagram (or its
+   `No diagram:` line), the `Also:` lines, the steps. With no flows: the pin and the steps.
+2. **The JSON**: one fenced `json` block, `pr-skills/story/v3`, written last, only once
+   the diagram has passed `check-diagram.mjs` or been dropped. Never the JSON without
+   the text, or the text without the JSON.
+
+The JSON transcribes the text and adds only what the text leaves out (`kind`, `group`,
+`level`, `changed_lines`, full `files` paths). If they disagree, the text is the source
+of truth: fix the JSON.
 
 ````
 pr-zone/przone-app#971 @ 3f9c2ab

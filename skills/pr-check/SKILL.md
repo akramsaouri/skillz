@@ -42,22 +42,22 @@ Input: a PR number in the current repo, `owner/repo#n`, or a PR URL. Pass it to
 bare number, `<owner/repo>` is `gh repo view --json nameWithOwner -q .nameWithOwner`.
 
 ```bash
-T=$(mktemp -d /tmp/pr-<n>.XXXXXX); echo "$T"   # one dir per run; reuse this path: shell variables die between tool calls
-gh pr view -R <owner/repo> <n> --json number,url,title,body,author,state,mergedAt,headRefName,headRefOid,baseRefOid,baseRefName,files,additions,deletions,closingIssuesReferences > "$T/pr.json"
-SHA=$(jq -r .headRefOid "$T/pr.json")   # resolve ONCE: FETCH_HEAD is overwritten by any later fetch
-gh pr diff -R <owner/repo> <n> > "$T/pr.diff"   # the net diff; --patch is a per-commit series that repeats files
-git fetch origin "refs/pull/<n>/head" "$(jq -r .baseRefName "$T/pr.json")"
-BASE=$(git merge-base "$(jq -r .baseRefOid "$T/pr.json")" "$SHA")   # the before-state
-git show "${SHA}:<path>"; git grep -n '<symbol>' "$SHA"   # read the head without checking it out
+mktemp -d /tmp/pr-<n>.XXXXXX   # prints <T>: one dir per run
+gh pr view -R <owner/repo> <n> --json number,url,title,body,author,state,mergedAt,headRefName,headRefOid,baseRefOid,baseRefName,files,additions,deletions,closingIssuesReferences > <T>/pr.json
+jq -r '.headRefOid, .baseRefOid, .baseRefName' <T>/pr.json   # prints <sha>, <base-oid>, <base-ref>; resolve ONCE: FETCH_HEAD is overwritten by any later fetch
+gh pr diff -R <owner/repo> <n> > <T>/pr.diff   # the net diff; --patch is a per-commit series that repeats files
+git fetch origin refs/pull/<n>/head <base-ref>
+git merge-base <base-oid> <sha>   # prints <base>: the before-state
+git show <sha>:<path>; git grep -n '<symbol>' <sha>   # read the head without checking it out
 ```
 
-- **zsh-safe.** Brace a SHA before a colon, `"${SHA}:<path>"` and `"${BASE}:<path>"`:
-  zsh reads `$SHA:h`, `:t`, `:r` and `:e` as modifiers (`hooks/x.ts` became `.ooks/x.ts`).
-  Pass each path as its own quoted word: zsh never splits an unquoted `$VAR` into words.
+- **Literals only.** No `$(...)`, backticks or variables: they die between tool calls, and
+  a permission guard refuses substitution. Run each command alone, read its output, and
+  paste the value into the next command as a literal (`<T>`, `<sha>`, `<base>` above).
 - `repo` in the JSON is `owner/name`, taken from the PR URL.
 - **Own PR**: `author.login` equals `gh api user -q .login`.
 - **Not cloned locally** (or `origin` is another repo): read files with
-  `gh api "repos/<owner/repo>/contents/<path>?ref=${SHA}" -H 'Accept: application/vnd.github.raw'`
+  `gh api "repos/<owner/repo>/contents/<path>?ref=<sha>" -H 'Accept: application/vnd.github.raw'`
   and history with `gh api "repos/<owner/repo>/commits?path=<path>"`.
 
 ## Quiz: `--depth quiz`, the default
@@ -66,14 +66,14 @@ git show "${SHA}:<path>"; git grep -n '<symbol>' "$SHA"   # read the head withou
 
 Write 3 **consequence** questions, each about what the code does in a case the diff
 creates or changes: "What happens if `profile.units` is null now?", "Where does a user
-land after a failed purchase?" At least one is a **why** question, answered at `$BASE`:
+land after a failed purchase?" At least one is a **why** question, answered at `<base>`:
 a consequence of the old behaviour that no card (below) names, such as what the user saw
 or a state it left downstream: "Before this PR, what did a double tap on Place order
 leave in the orders table?" No such consequence (an additive PR, or a feature that
 fixes nothing): skip the why and say so in `why_skipped`. Each one:
 
-- has one correct answer, provable from repo code with a `file:line`: at `$SHA`, or at
-  `$BASE` for what the old code did, cited as `file:line@base`. Cite an absence by the
+- has one correct answer, provable from repo code with a `file:line`: at `<sha>`, or at
+  `<base>` for what the old code did, cited as `file:line@base`. Cite an absence by the
   range that lacks it (`file:12-40`) and the `git grep` that finds nothing;
 - never turns on an unset library default (the answer would change if someone set an
   option the repo leaves unset) or on OS or scheduler timing (which widget entry the OS
@@ -88,7 +88,7 @@ fixes nothing): skip the why and say so in `why_skipped`. Each one:
   pr-lanes reason, a pr-story line (a step's `what`, an `Also:` line, a diagram
   message) and, on Sat's own PR, the title. That bars the before-state a changed or
   removed line implies: "fetchProfile also selects locale" answers what the old locale
-  check compared against. Read their JSON, pinned to `$SHA`, from earlier in this
+  check compared against. Read their JSON, pinned to `<sha>`, from earlier in this
   session (Lucidos runs lanes → story → check in one) or from `--lanes <file>` and
   `--story <file>`. With no lanes, never quiz the change a lane reason would name (the
   unmentioned change, the one users see, the sensitive trigger); quiz its edges instead.
@@ -159,7 +159,7 @@ code, an absence cited as in the quiz. A correct answer's evidence is its correc
 Input: Sat's free-text explanation of the PR. None given: print
 `Explain the PR in your own words: /pr-check <n> --depth teachback "<explanation>"` and stop.
 
-Check every claim in the explanation against the diff at `$SHA`, then list:
+Check every claim in the explanation against the diff at `<sha>`, then list:
 
 - **wrong**: a claim the code contradicts. Quote it, and cite the line that shows otherwise.
 - **missing**: a load-bearing part of the change the explanation leaves out.

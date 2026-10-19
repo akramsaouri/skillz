@@ -48,22 +48,22 @@ Input: a PR number in the current repo, `owner/repo#n`, or a PR URL. Pass it to
 bare number, `<owner/repo>` is `gh repo view --json nameWithOwner -q .nameWithOwner`.
 
 ```bash
-T=$(mktemp -d /tmp/pr-<n>.XXXXXX); echo "$T"   # one dir per run; reuse this path: shell variables die between tool calls
-gh pr view -R <owner/repo> <n> --json number,url,title,body,author,state,mergedAt,headRefName,headRefOid,baseRefOid,baseRefName,files,additions,deletions,closingIssuesReferences > "$T/pr.json"
-SHA=$(jq -r .headRefOid "$T/pr.json")   # resolve ONCE: FETCH_HEAD is overwritten by any later fetch
-gh pr diff -R <owner/repo> <n> > "$T/pr.diff"   # the net diff; --patch is a per-commit series that repeats files
-git fetch origin "refs/pull/<n>/head" "$(jq -r .baseRefName "$T/pr.json")"
-BASE=$(git merge-base "$(jq -r .baseRefOid "$T/pr.json")" "$SHA")   # the before-state
-git show "${SHA}:<path>"; git grep -n '<symbol>' "$SHA"   # read the head without checking it out
+mktemp -d /tmp/pr-<n>.XXXXXX   # prints <T>: one dir per run
+gh pr view -R <owner/repo> <n> --json number,url,title,body,author,state,mergedAt,headRefName,headRefOid,baseRefOid,baseRefName,files,additions,deletions,closingIssuesReferences > <T>/pr.json
+jq -r '.headRefOid, .baseRefOid, .baseRefName' <T>/pr.json   # prints <sha>, <base-oid>, <base-ref>; resolve ONCE: FETCH_HEAD is overwritten by any later fetch
+gh pr diff -R <owner/repo> <n> > <T>/pr.diff   # the net diff; --patch is a per-commit series that repeats files
+git fetch origin refs/pull/<n>/head <base-ref>
+git merge-base <base-oid> <sha>   # prints <base>: the before-state
+git show <sha>:<path>; git grep -n '<symbol>' <sha>   # read the head without checking it out
 ```
 
-- **zsh-safe.** Brace a SHA before a colon, `"${SHA}:<path>"` and `"${BASE}:<path>"`:
-  zsh reads `$SHA:h`, `:t`, `:r` and `:e` as modifiers (`hooks/x.ts` became `.ooks/x.ts`).
-  Pass each path as its own quoted word: zsh never splits an unquoted `$VAR` into words.
+- **Literals only.** No `$(...)`, backticks or variables: they die between tool calls, and
+  a permission guard refuses substitution. Run each command alone, read its output, and
+  paste the value into the next command as a literal (`<T>`, `<sha>`, `<base>` above).
 - `repo` in the JSON is `owner/name`, taken from the PR URL.
 - **Own PR**: `author.login` equals `gh api user -q .login`.
 - **Not cloned locally** (or `origin` is another repo): read files with
-  `gh api "repos/<owner/repo>/contents/<path>?ref=${SHA}" -H 'Accept: application/vnd.github.raw'`
+  `gh api "repos/<owner/repo>/contents/<path>?ref=<sha>" -H 'Accept: application/vnd.github.raw'`
   and history with `gh api "repos/<owner/repo>/commits?path=<path>"`.
 
 ## Step 1 — Recall
@@ -95,7 +95,7 @@ Read these from the metadata and the diff. They are also the JSON `signals`.
   segment, or the first two under `apps/`, `packages/`, `services/`, `libs/`, `src/`,
   `.claude/`, `.agents/`; a skill is its own area (`.claude/skills/release`). Root
   files are `(root)`, which counts for familiarity, never toward structure's ≥3.
-- **New abstractions**: symbols exported at `$SHA` and not at `$BASE` (types,
+- **New abstractions**: symbols exported at `<sha>` and not at `<base>` (types,
   functions, classes, components, hooks), plus new tables, RPCs, endpoints and jobs.
   Not unexported helpers, a new file as such, re-exports, tests, or a moved symbol.
 - **Author**: `own`, `other`, or `bot` (`dependabot`, `renovate`, a `[bot]` login).
@@ -118,10 +118,11 @@ Read these from the metadata and the diff. They are also the JSON `signals`.
   resulting state, additive changes and callers the diff updates don't count), `gate`
   (review, merge, release, CI skip, in code or prompts).
 - **Familiarity**: how well Sat knew each area in the year before BASE's date (not
-  today's: re-runs must agree). Count Sat's commits from `$BASE`, which leaves out this
-  PR's own, one call per area with the area as one quoted word (`(root)` is
-  `':(top,glob)*'`), and keep the lowest count with its area:
-  `git log --since="$(git show -s --format=%cs "$BASE") 1 year ago" --author="$(git config user.email)" --format=%h "$BASE" -- 'widgets' | wc -l`
+  today's: re-runs must agree). Read that date once (`git show -s --format=%cs <base>`,
+  `<date>`) and Sat's email (`git config user.email`, `<email>`). Count Sat's commits
+  from `<base>`, which leaves out this PR's own, one call per area with the area as one
+  quoted word (`(root)` is `':(top,glob)*'`), and keep the lowest count with its area:
+  `git log --since="<date> 1 year ago" --author=<email> --format=%h <base> -- 'widgets' | wc -l`
 
 ## Step 3 — Lanes
 
