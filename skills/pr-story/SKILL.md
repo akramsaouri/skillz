@@ -2,17 +2,17 @@
 name: pr-story
 description: >
   Order a pull request's diff into a reading story (types, data, logic, UI,
-  tests) with exactly one Mermaid diagram of its riskiest flow, as a sequence,
-  state or flowchart diagram depending on the change. Use when asked how to
-  read a PR, or how its pieces fit together.
+  tests) with one Mermaid diagram for each of its biggest flows (up to 3), each
+  a sequence, state or flowchart diagram depending on the change. Use when
+  asked how to read a PR, or how its pieces fit together.
 argument-hint: "<pr>"
 ---
 
 # PR story
 
 A diff arrives in alphabetical order, which is almost never the order it makes sense
-in. Re-order it so each file is read after what it depends on, and draw the one flow
-that carries the most risk.
+in. Re-order it so each file is read after what it depends on, and draw the flows that
+carry the most changed code.
 
 ## Ground rules, shared by all six pr-* skills
 
@@ -37,8 +37,9 @@ that carries the most risk.
 
 ## Budget
 
-One diagram, plus the ordered file list at one line per step. Besides those, only the
-"separate things" opener when it applies, and one line per extra flow.
+Up to 3 diagrams, each under a one-line `Flow` label, plus the ordered file list at one
+line per step. Besides those, only the "separate things" opener when it applies, and
+one line per extra flow.
 
 ## Acquire
 
@@ -140,7 +141,7 @@ that uses the name.
   `git diff -w <base> <sha>`, not counting blank or comment-only lines (in a markdown
   or skill file: fence delimiters, headings, `#` comments inside a fenced shell
   snippet, and a prose line that is only reworded, so it gives the same instruction as
-  before). Every count uses them: the size gate, Step 3's tie-break, `changed_lines`.
+  before). Every count uses them: the size gate, Step 3's pick, `changed_lines`.
   A line **serves** a flow when that flow's behaviour change depends on what the line
   changes, not just because the flow runs it: a fixed query bound serves the flow cut
   for that fix, not every flow reading its rows. A line serving two flows scores in
@@ -183,8 +184,8 @@ that uses the name.
 Nothing that runs changes behaviour (docs or slash-command markdown only, config,
 renames, dependency bumps, comment-only trims, a pure refactor, dead code: a function
 no caller reaches, or removing an export that `git grep -n '<name>' <base>` finds in no
-other file): no flows, so skip Step 3 and output only the file list, with `flows` `[]`
-and `diagram` `null`. A refactor or dead-code PR is this case, not one flow per caller
+other file): no flows, so skip Step 3 and output only the file list, with `flows` `[]`,
+`diagrams` `[]` and `diagram` `null`. A refactor or dead-code PR is this case, not one flow per caller
 or per touched function.
 
 **Groups.** Two flows share a group when one changed function holds lines scored in
@@ -203,13 +204,21 @@ With N ≥ 3 things, open the output (after the pin) with `This PR does N separa
 things.`, or with K ≥ 1 small fixes, `This PR does N separate things, plus K small
 fixes.` K = 1 reads `plus 1 small fix.`; N is never below 3, so `things` stays plural.
 
-## Step 3 — Diagram the riskiest flow
+## Step 3 — Diagram the biggest flows
 
-Draw one flow as one Mermaid diagram: `sequenceDiagram`, `stateDiagram-v2`, or
-`flowchart TD`. Exactly one diagram per run.
+Draw each of the biggest flows as one Mermaid diagram: `sequenceDiagram`,
+`stateDiagram-v2`, or `flowchart TD`. One diagram per picked flow, at most 3 per run.
 
-- Pick the flow by risk, not size. Recompute pr-lanes' sensitive categories (its
-  "Sensitive" signal, `<this-skill-dir>/../pr-lanes/SKILL.md`) per flow over every line
+- Pick the flows by size: the flows with the most `changed_lines`, up to 3. A PR with
+  fewer flows gets fewer diagrams, and a flow with 0 changed lines of its own (an
+  emptied flow) is never picked, so a PR whose flows are all emptied gets none. Order
+  the picks by `changed_lines`, biggest first; a tie goes to the riskier flow, by the
+  risk order below. Counts: flows of 1,693, 50 and 12 changed lines are all three
+  drawn, the 1,693-line `WorkoutTracker: tap Plates on weight keypad` first. Doesn't:
+  only the 50-line `supabase db push` because it holds a sensitive category, or a
+  fourth diagram for a fourth flow.
+- **Risk order**, for that tie-break and for the `Also:` lines. Recompute pr-lanes'
+  sensitive categories (its "Sensitive" signal, `<this-skill-dir>/../pr-lanes/SKILL.md`) per flow over every line
   serving it, shared or not, with pr-lanes' test: a line must alter the category, not
   just read, render or memoize it; for `gate`, that is Step 2's gate-changing line.
   A line takes at most one of `gate`, `concurrency` and `contract`, the first that
@@ -223,10 +232,11 @@ Draw one flow as one Mermaid diagram: `sequenceDiagram`, `stateDiagram-v2`, or
   Most categories wins, then changed lines, then the flow holding the category that
   comes first in `auth`, `money`, `data`, `security`, `gate`, `concurrency`,
   `contract`, then the entry that sorts first alphabetically. Counts: two flows of 8
-  lines, one `concurrency` and one `contract`: the `concurrency` flow. Doesn't: a
-  40-line flow of one category over an 8-line flow of two.
-- Pick the kind to fit the flow, not the flow to fit a kind: the first of these tests
-  that holds for the changed lines of the riskiest flow.
+  lines, one `concurrency` and one `contract`: the `concurrency` flow ranks first.
+  Doesn't: a 40-line flow of one category ranked over an 8-line flow of two.
+- Pick each diagram's kind to fit its flow, not the flow to fit a kind: the first of
+  these tests that holds for the changed lines of that flow. Picked flows may get
+  different kinds.
   1. `stateDiagram-v2`: the code names at least two states of one thing (enum or
      union members, flag values, reducer cases: a timer, a sheet or keypad open or
      closed, a subscription, a workout lifecycle) and a changed line adds, removes or
@@ -268,30 +278,33 @@ Draw one flow as one Mermaid diagram: `sequenceDiagram`, `stateDiagram-v2`, or
   Plain words, no HTML: Pele draws text as SVG and drops a tag with its text
   (`Promise<User>` shows `Promise`); `<br>` breaks a line.
 
-**Check the draft with Pele**, which draws it in the Pulls app, before any output.
-Write it to `<T>/diagram.mmd` and run:
+**Check each draft with Pele**, which draws it in the Pulls app, before any output.
+Each diagram is checked on its own, with its own 3 drafts. Write the i-th pick's draft
+(from 1) to `<T>/diagram-<i>.mmd` and run:
 
 ```bash
-node <this-skill-dir>/scripts/check-diagram.mjs <T>/diagram.mmd
+node <this-skill-dir>/scripts/check-diagram.mjs <T>/diagram-<i>.mmd
 ```
 
 - **A pass is read from stdout, not from `$?`** (a variable, so banned): stdout starts
-  with `ok: ` and the word after it equals the kind you picked, which is the
-  `diagram.kind` you write: `ok: sequence`, `ok: state` or `ok: flowchart`. An empty
-  stdout, an error on stderr, or an `ok:` with another kind is no pass, and counts as a
-  draft: redraw it as the kind you picked. The checked file goes unchanged into the
-  text and into `diagram.mermaid`.
+  with `ok: ` and the word after it equals the kind you picked for that flow, which is
+  the `kind` you write in its `diagrams` entry: `ok: sequence`, `ok: state` or
+  `ok: flowchart`. An empty stdout, an error on stderr, or an `ok:` with another kind
+  is no pass, and counts as a draft: redraw it as the kind you picked. The checked file
+  goes unchanged into the text and into that entry's `mermaid`.
 - Exit 1 names the problem and its line. Fix only that, keeping what the diagram says,
-  and run it again: at most 3 drafts.
+  and run it again: at most 3 drafts per diagram.
 - Exit 3: pele is not installed. Run the `npm ci` line it prints, once, then the check.
   That install, into this skill's own `node_modules`, and `node` running the check are
   the only exceptions to the Read-only rule.
-- No draft passes in 3, or the check cannot run (no Node 20+, the install fails): no
-  diagram ships. In its place put `No diagram: <the check's first error line>`, cut to
-  140 characters; `diagram` is `null` and no flow is `diagrammed`.
+- A diagram whose drafts all fail in 3, or every diagram when the check cannot run (no
+  Node 20+, the install fails), does not ship. In its place put
+  `No diagram for <entry>: <the check's first error line>`, cut to 140 characters; that
+  flow is not in `diagrams`, is not `diagrammed`, and gets an `Also:` line like any
+  other flow. The other picks still ship; the next-biggest flow never steps in.
 
-Under the diagram, one line per other flow: every thing's top flow, then emptied flows,
-then the rest, each part by risk then changed lines. At most 5, then `+N more flows`:
+Under the diagrams, one line per flow not diagrammed: every thing's top flow, then
+emptied flows, then the rest, each part by risk then changed lines. At most 5, then `+N more flows`:
 `Also: <entry> → <deepest changed hop> (<N> changed lines)`, or `(no lines of its own)`
 for an emptied flow.
 
@@ -300,11 +313,13 @@ for an emptied flow.
 Your final reply is two parts, in this order, both mandatory. Type them yourself: a
 file, or JSON built with `jq` or a script, is not the block.
 
-1. **The text**: the pin, the "separate things" opener if any, the diagram (or its
-   `No diagram:` line), the `Also:` lines, the steps. With no flows: the pin and the steps.
-2. **The JSON**: one fenced `json` block, `pr-skills/story/v3`, written last, only once
-   the diagram has passed `check-diagram.mjs` or been dropped. Never the JSON without
-   the text, or the text without the JSON.
+1. **The text**: the pin, the "separate things" opener if any, each picked flow in
+   order (its `Flow <i>: <entry> (<N> changed lines)` label line, then its diagram or
+   its `No diagram for` line), the `Also:` lines, the steps. With no flows: the pin and
+   the steps.
+2. **The JSON**: one fenced `json` block, `pr-skills/story/v4`, written last, only once
+   every picked diagram has passed `check-diagram.mjs` or been dropped. Never the JSON
+   without the text, or the text without the JSON.
 
 The JSON transcribes the text and adds only what the text leaves out (`kind`, `group`,
 `level`, `changed_lines`, full `files` paths). If they disagree, the text is the source
@@ -312,6 +327,7 @@ of truth: fix the JSON.
 
 ````
 pr-zone/przone-app#971 @ 3f9c2ab
+Flow 1: StreakScreen: tap Use freeze (142 changed lines)
 ```mermaid
 sequenceDiagram
   participant SC as StreakScreen [unchanged]
@@ -325,17 +341,7 @@ sequenceDiagram
   RPC-->>ST: streak with frozen day [changed]
   ST-->>SC: re-render streak [changed]
 ```
-Also: nightly streak_reset job → reset_streaks (12 changed lines)
-1. data — 0042_streak_freezes.sql — adds streak_freezes and spend_freeze()
-2. logic — useStreakStore.ts, streak.ts — spends a freeze through the RPC, keeps frozen days
-3. UI — StreakCard.tsx — frozen-day badge
-4. tests — streak.test.ts — frozen day keeps the streak
-5. skip — database.types.ts, en.json — generated from the migration; badge copy
-````
-
-A flow whose risk is state, not call order, draws `stateDiagram-v2` instead:
-
-````
+Flow 2: WorkoutScreen: tap rest timer (38 changed lines)
 ```mermaid
 stateDiagram-v2
   state "Hidden" as Hidden
@@ -347,23 +353,34 @@ stateDiagram-v2
   KeypadOpen --> Visible: dismiss keypad, sheet stays hidden [new]
   Visible --> Hidden: dismiss sheet
 ```
+Also: StreakScreen: opens (no lines of its own)
+1. data — 0042_streak_freezes.sql — adds streak_freezes and spend_freeze()
+2. logic — useStreakStore.ts, streak.ts — spends a freeze through the RPC, keeps frozen days
+3. UI — StreakCard.tsx, RestSheet.tsx — frozen-day badge; keypad over the rest sheet
+4. tests — streak.test.ts — frozen day keeps the streak
+5. skip — database.types.ts, en.json — generated from the migration; badge copy
 ````
 
 ```json
 {
-  "schema": "pr-skills/story/v3",
+  "schema": "pr-skills/story/v4",
   "pr": {"repo": "pr-zone/przone-app", "number": 971, "url": "https://github.com/pr-zone/przone-app/pull/971", "head_sha": "<40-hex>"},
   "generated_at": "2026-09-27T09:14:00Z",
   "separate_things": null, "small_fixes": null,
   "flows": [
     {"entry": "StreakScreen: tap Use freeze", "kind": "screen", "group": 1, "changed_lines": 142, "diagrammed": true},
-    {"entry": "nightly streak_reset job", "kind": "job", "group": 2, "changed_lines": 12, "diagrammed": false}
+    {"entry": "WorkoutScreen: tap rest timer", "kind": "screen", "group": 2, "changed_lines": 38, "diagrammed": true},
+    {"entry": "StreakScreen: opens", "kind": "screen", "group": 1, "changed_lines": 0, "diagrammed": false}
   ],
-  "diagram": {"kind": "sequence", "level": "function", "participants": 4, "messages": 6, "mermaid": "sequenceDiagram\n  participant SC as StreakScreen [unchanged]\n  ..."},
+  "diagrams": [
+    {"flow": "StreakScreen: tap Use freeze", "kind": "sequence", "level": "function", "participants": 4, "messages": 6, "mermaid": "sequenceDiagram\n  participant SC as StreakScreen [unchanged]\n  ..."},
+    {"flow": "WorkoutScreen: tap rest timer", "kind": "state", "level": "function", "participants": 3, "messages": 5, "mermaid": "stateDiagram-v2\n  state \"Hidden\" as Hidden\n  ..."}
+  ],
+  "diagram": {"flow": "StreakScreen: tap Use freeze", "kind": "sequence", "level": "function", "participants": 4, "messages": 6, "mermaid": "sequenceDiagram\n  participant SC as StreakScreen [unchanged]\n  ..."},
   "steps": [
     {"n": 1, "layer": "data", "files": ["supabase/migrations/0042_streak_freezes.sql"], "what": "adds streak_freezes and spend_freeze()"},
     {"n": 2, "layer": "logic", "files": ["app/stores/useStreakStore.ts", "supabase/functions/streak.ts"], "what": "spends a freeze through the RPC, keeps frozen days"},
-    {"n": 3, "layer": "UI", "files": ["app/streak/StreakCard.tsx"], "what": "frozen-day badge"},
+    {"n": 3, "layer": "UI", "files": ["app/streak/StreakCard.tsx", "app/workout/RestSheet.tsx"], "what": "frozen-day badge; keypad over the rest sheet"},
     {"n": 4, "layer": "tests", "files": ["app/stores/streak.test.ts"], "what": "frozen day keeps the streak"},
     {"n": 5, "layer": "skip", "files": ["types/database.types.ts", "app/i18n/en.json"], "what": "generated from the migration; badge copy"}
   ]
@@ -371,23 +388,38 @@ stateDiagram-v2
 ```
 
 `generated_at` is `<now>`, printed by Acquire's `date` line and pasted as a literal.
-`flows` holds every flow, the diagrammed one first, then in `Also:` order. `group`
-numbers the groups from 1 in that order. `separate_things` is N, the count of things,
+`flows` holds every flow: the diagrammed ones first, biggest first (the `diagrams`
+order), then the rest in `Also:` order, past the 5 the text shows. `diagrammed` is
+`true` exactly for the flows in `diagrams`. `group` numbers the groups from 1 in
+`flows` order.
+`diagrams` holds one entry per diagram that passed the check, in pick order:
+`changed_lines` descending. Its `flow` is the exact `entry` string of the flow it
+draws, character for character. `diagram` is a copy of `diagrams[0]`, for readers of
+older versions, and `null` when `diagrams` is `[]`. `separate_things` is N, the count of things,
 when it is 3 or more, else `null`; `small_fixes` is K (0 or more) beside it, else
 `null`. A flow's `kind` is one of Step 2's kinds. `level` is `function|module`:
 `module` when any participant is a file, script, workflow, package or service taken as
 a whole, as in Step 3's redraw of a flow past 8 participants or 15 messages; `function`
 when each is a symbol (function, hook, component, store, RPC) or a table, and for
-every `state` and `flowchart` diagram. With no flows, `flows` is `[]`, `diagram` is
-`null` and `separate_things` and `small_fixes` are `null`; `diagram` is also `null`
-when no draft passed Step 3's check.
-The diagram's own `kind` is Step 3's pick, `sequence|state|flowchart`, and is the word
-after `ok: ` in the check's passing output: a `sequence` diagram keeps
-`participants`/`messages`; `state` and `flowchart` use `nodes`/`edges` instead. The JSON `files` lists every path in full, unlike the text line. **v2**: flows
+every `state` and `flowchart` diagram. With no flows, `flows` and `diagrams` are `[]`,
+`diagram` is `null` and `separate_things` and `small_fixes` are `null`; `diagrams` is
+also `[]` and `diagram` `null` when no flow has changed lines of its own, or no draft
+passed Step 3's check.
+Each diagram's own `kind` is Step 3's pick for its flow, `sequence|state|flowchart`,
+and is the word after `ok: ` in the check's passing output. Every entry carries
+`participants` and `messages`: for a `sequence`, its participants and messages; for a
+`state`, its states (not `[*]`) and transitions (with those from or to `[*]`); for a
+`flowchart`, its nodes and edges. The JSON `files` lists every path in full, unlike the
+text line. **v2**: flows
 gain `group`; `kind` gains `event` and `launch`; `changed_lines` counts Step 2's
 changed lines; `flows` lists every flow, in the order above. Added later, so older v2
 files lack them: `small_fixes` (read `null`), emptied flows with `changed_lines: 0`,
 counting on `git diff -w` without blanks or comments, and serving by dependence.
 **v3**: `diagram` gains `kind`. v2 files have no `kind` and are always `sequence`:
 readers must treat a missing `kind` as `sequence`. Added later: a `null` `diagram`
-beside flows, when no draft passed the check.
+beside flows, when no draft passed the check. v3 `state` and `flowchart` diagrams
+count `nodes`/`edges` instead of `participants`/`messages`.
+**v4**: one diagram per biggest flow, up to 3, in the new `diagrams` array, each naming
+its flow in `flow`; `diagram` stays as `diagrams[0]`. v3 drew one diagram, of the
+riskiest flow, and has no `diagrams`: readers treat a missing `diagrams` as `[diagram]`,
+or `[]` when `diagram` is `null`, with `flow` the entry of the flow marked `diagrammed`.
