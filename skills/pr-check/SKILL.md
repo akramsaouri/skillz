@@ -14,7 +14,7 @@ Reading a diff feels like understanding it. This skill tests the feeling. It wor
 same for the author and for a reviewer: the questions ask what the code now does, and
 the code at the pinned SHA is the answer key.
 
-## Ground rules, shared by all six pr-* skills
+## Ground rules, shared by all seven pr-* skills
 
 - **Optional.** Nothing here gates a review or a merge; skipping this skill is always fine.
 - **Sat acts alone.** Every next step you name is one the user (Sat) can take by

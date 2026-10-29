@@ -1,8 +1,8 @@
 ---
 name: pr-lanes
 description: >
-  Triage a pull request into review lanes (intent, structure, behaviour,
-  understanding, remember, trust), one-line reason each, and surface the
+  Triage a pull request into review lanes (summary, intent, structure,
+  behaviour, understanding, remember, trust), one-line reason each, and surface the
   pr-recall cards it touches. Use as the first pass on a PR, or to pick which
   pr-* skill to run next.
 argument-hint: "<pr>"
@@ -15,7 +15,7 @@ of the other pr-* skills are worth running on it, and which PRs need nothing at 
 Past decisions the PR touches go on top: a PR that quietly undoes one is the most
 expensive thing to miss.
 
-## Ground rules, shared by all six pr-* skills
+## Ground rules, shared by all seven pr-* skills
 
 - **Optional.** Nothing here gates a review or a merge; skipping this skill is always fine.
 - **Sat acts alone.** Every next step you name is one the user (Sat) can take by
@@ -38,8 +38,8 @@ expensive thing to miss.
 
 ## Budget
 
-At most 3 recall lines (or the no-match line), then one line per lane (or the no-lane
-line). Nothing else.
+At most 3 recall lines (or the no-match line), then one line per lane (the summary
+line, then the no-lane line when nothing else holds). Nothing else.
 
 ## Acquire
 
@@ -130,6 +130,7 @@ Test every lane against its trigger and tag each one that holds, in table order.
 
 | Lane | Fires when | Next |
 |---|---|---|
+| summary | always, on every PR, trust-only and rename-only ones included: the 15-second read is cheap and always useful | `/pr-summary` |
 | intent | the PR adds a capability (a new route, screen, endpoint, job, flag or public API) or makes a capability, user-visible behaviour, gate or breaking contract change (by `contract`'s test), and its title and body never mention it: a new job the title names doesn't fire. Only a change of its own fires it, never a detail a reader of the body would expect (a singular "1 day remaining" in a countdown the body describes). Internals never count: PR templates often keep them out of the body. A fix or refactor alone is not intent | `/pr-intent` |
 | structure | ≥3 areas besides `(root)`, ≥10 meaningful files besides tests, ≥3 new abstractions, or a move or refactor at scale | `/pr-story` |
 | behaviour | a user can notice it (UI, copy, navigation, notifications, errors the user sees, public API or CLI output), including a sheet, toast or notification now shown a different number of times (a summary opening once per subscription change, not once per caller), or it changes a gate | `/pr-behaviour` |
@@ -137,9 +138,12 @@ Test every lane against its trigger and tag each one that holds, in table order.
 | remember | a recall hit reads `no`, the PR reverses a rule the repo writes down, or it writes down a new convention: a rule for code beyond its own lines, in `CLAUDE.md`, docs or a comment ("mount only from the bridge"), which fires this even in a Trust-class file. A comment explaining its own lines, or a decision that lives only in code, does not | `/pr-recall create` once merged |
 | trust | there are no meaningful files: every change is Trust-class | none |
 
+- **summary is always first.** Its line is fixed:
+  `summary — what the PR does and how, in 15 seconds → /pr-summary`.
 - **trust is exclusive.** No meaningful files: print the trust line and no other lane
-  but remember. Any meaningful file: trust never fires.
-- No lane holds: print `No lane: nothing here needs another pr-* skill.`
+  but summary and remember. Any meaningful file: trust never fires.
+- No lane but summary holds: after the summary line, print
+  `No lane: nothing else here needs another pr-* skill.`
 - On Sat's own PR, the intent line's next step is `/pr-intent <n> "<your why>"`.
 - A reason names evidence Sat can check: "adds `POST /streaks/freeze` (api/streaks.ts)
   for ticket PZ-88", not "adds a feature". An understanding reason names the trigger
@@ -147,13 +151,14 @@ Test every lane against its trigger and tag each one that holds, in table order.
 
 Line: `<lane> — <reason> → <next>`
 
-Done when all six lanes were tested, and each tagged lane has exactly one line.
+Done when all seven lanes were tested, and each tagged lane has exactly one line.
 
 ## Output
 
 ```
 pr-zone/przone-app#971 @ 3f9c2ab
 ✗ decision · #812 — Streak days are computed server-side — useStreak.ts:41 recomputes them on the client
+summary — what the PR does and how, in 15 seconds → /pr-summary
 intent — adds POST /streaks/freeze (api/streaks.ts) for ticket PZ-88 → /pr-intent
 understanding — money: spends an IAP entitlement in purchase.ts; Sat has 0 commits in api before this PR → /pr-check
 remember — reverses #812: streak days move to the client → /pr-recall create once merged
@@ -169,6 +174,7 @@ remember — reverses #812: streak days move to the client → /pr-recall create
     {"card_id": "pr-zone/przone-app#812-1", "pr": 812, "kind": "decision", "fact": "Streak days are computed server-side", "still_true": "no", "why": "useStreak.ts:41 recomputes them on the client"}
   ],
   "lanes": [
+    {"lane": "summary", "reason": "what the PR does and how, in 15 seconds", "next": "pr-summary"},
     {"lane": "intent", "reason": "adds POST /streaks/freeze (api/streaks.ts) for ticket PZ-88", "next": "pr-intent"},
     {"lane": "understanding", "reason": "money: spends an IAP entitlement in purchase.ts; Sat has 0 commits in api before this PR", "next": "pr-check"},
     {"lane": "remember", "reason": "reverses #812: streak days move to the client", "next": "pr-recall"}
@@ -177,8 +183,10 @@ remember — reverses #812: streak days move to the client → /pr-recall create
 }
 ```
 
-`lane` is one of `intent|structure|behaviour|understanding|remember|trust`; `next` is
-the skill name, or `null` for trust. `still_true` is `yes|no|unclear`. `sensitive`
-holds `auth|money|data|security|concurrency|contract|gate`; `familiarity` is `null`
-with no meaningful files. **v2**: v1's `sensitive` held `ui|schema|money|auth`, and
-its `familiarity` was a bare number.
+`lane` is one of `summary|intent|structure|behaviour|understanding|remember|trust`, and
+`lanes` always opens with the summary entry; `next` is the skill name, or `null` for
+trust. `still_true` is `yes|no|unclear`. `sensitive` holds
+`auth|money|data|security|concurrency|contract|gate`; `familiarity` is `null` with no
+meaningful files. **v2**: v1's `sensitive` held `ui|schema|money|auth`, and its
+`familiarity` was a bare number. `summary` joined v2 later as an added lane value; a
+reader that skips lanes it doesn't know is unaffected.
