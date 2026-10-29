@@ -14,7 +14,7 @@ A diff arrives in alphabetical order, which is almost never the order it makes s
 in. Re-order it so each file is read after what it depends on, and draw the flows that
 carry the most changed code.
 
-## Ground rules, shared by all six pr-* skills
+## Ground rules, shared by all seven pr-* skills
 
 - **Optional.** Nothing here gates a review or a merge; skipping this skill is always fine.
 - **Sat acts alone.** Every next step you name is one the user (Sat) can take by

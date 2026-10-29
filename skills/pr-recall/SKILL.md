@@ -14,7 +14,7 @@ What a review taught evaporates at merge. A card keeps the one fact that will ma
 the next time someone touches these files, and `match` checks every new PR against
 those facts. That is how a PR that quietly undoes an earlier decision gets caught.
 
-## Ground rules, shared by all six pr-* skills
+## Ground rules, shared by all seven pr-* skills
 
 - **Optional.** Nothing here gates a review or a merge; skipping this skill is always fine.
 - **Sat acts alone.** Every next step you name is one the user (Sat) can take by

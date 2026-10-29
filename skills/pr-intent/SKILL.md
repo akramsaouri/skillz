@@ -14,7 +14,7 @@ A PR's stated reason and its code drift apart quietly: a "small fix" grows a sec
 change, a promised behaviour never lands. Put the why beside the diff and name every
 place they disagree.
 
-## Ground rules, shared by all six pr-* skills
+## Ground rules, shared by all seven pr-* skills
 
 - **Optional.** Nothing here gates a review or a merge; skipping this skill is always fine.
 - **Sat acts alone.** Every next step you name is one the user (Sat) can take by

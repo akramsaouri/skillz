@@ -13,7 +13,7 @@ What the PR does to the person using the product, not to the code. Every change 
 difference between two states you have read: the before-state at the merge base and
 the after-state at the head.
 
-## Ground rules, shared by all six pr-* skills
+## Ground rules, shared by all seven pr-* skills
 
 - **Optional.** Nothing here gates a review or a merge; skipping this skill is always fine.
 - **Sat acts alone.** Every next step you name is one the user (Sat) can take by
